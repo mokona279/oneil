@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "oneil-bt"
+version = "0.1.0"
+description = "주도주 추세추종 매매규칙서 백테스트 (oneil_strategy v3-3)"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+parquet = ["pyarrow>=12.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+# src 레이아웃과 tests 패키지를 설치 없이 import 가능하게 한다.
+pythonpath = ["src", "."]
+testpaths = ["tests"]
+addopts = "-ra"

@@ -1,0 +1,13 @@
+# 거래비용 (계획서 §5). 실제 스케줄은 사용자 확인 필요(§12 Q19):
+# 농특세·유관기관수수료 포함 여부를 명시해야 한다. 아래는 기본 초안값이다.
+
+commission_bp: 1.5                # 편도 수수료(bp)
+slippage_bp: 5                    # 체결 슬리피지(편도, bp)
+
+sell_tax_schedule:                # 매도 거래세(농특세 포함), 시행일 기준 계단
+  - {from: "2000-01-01", kospi_bp: 30, kosdaq_bp: 30}
+  - {from: "2019-06-03", kospi_bp: 25, kosdaq_bp: 25}
+  - {from: "2021-01-01", kospi_bp: 23, kosdaq_bp: 23}
+  - {from: "2023-01-01", kospi_bp: 20, kosdaq_bp: 20}
+  - {from: "2024-01-01", kospi_bp: 18, kosdaq_bp: 18}
+  - {from: "2025-01-01", kospi_bp: 15, kosdaq_bp: 15}

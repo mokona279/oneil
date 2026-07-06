@@ -1,0 +1,92 @@
+# 주도주 추세추종 매매규칙서 백테스트 — 규칙 파라미터 (단일 진실 원천: oneil_strategy.md v3-3)
+# 계획서 §5 참조. 코드 내 수치 하드코딩 금지, 모든 규칙 수치는 여기서 외부화한다.
+# 범위 표기(예: +25~30%)는 계획서 §12 결정 질문에 따라 단일값을 채택했다.
+
+rulebook_version: "v3-3"          # 재현성 태그
+calendar_source: index            # 거래일 = 지수 CSV 날짜 기준
+
+trend_template:                   # §3 0단계 — 트렌드 템플릿 7조건 (AND)
+  above_ma: [150, 200]            # 주가 > 150MA & 200MA
+  ma150_gt_ma200: true            # 150MA > 200MA
+  ma200_rising_lookback: 20       # "200MA 1개월 이상 상승" 정의 (Q6)
+  ma50_gt_ma150: true             # 50MA > 150MA
+  low_52w_gain_min_pct: 25        # 52주 저가 대비 +25% 이상 (Q6: 25 채택)
+  high_52w_within_pct: 15         # 52주 고가 -15% 이내
+  turnover_20d_min_krw: 1.0e10    # 20일 평균 거래대금 >= 100억
+
+overheating:                      # §3 과열 제외 / §5 품질1
+  ret_lookback_days: 20
+  ret_threshold_pct: 50           # 20일 수익률 > 50% 진입 금지
+  require_no_base: true           # "베이스 없이" 한정 (Q4)
+  limitup_lookback_days: 10       # 2주내 상한가 (Q3: 데이터 필요)
+  swing_pct: 15                   # ±15% 스윙 반복 (Q3: 정의 필요)
+  swing_min_count: null
+
+rs:                               # §3 1단계 상대강도
+  lookback_days: 126              # 6개월
+  method: return_diff             # 종목 6M수익 - 지수 6M수익 > 0 (Q5)
+
+base:                             # §5 베이스 규칙
+  depth_tiers:
+    - {max_depth_pct: 15, min_weeks: 5}     # 플랫/얕은 베이스
+    - {max_depth_pct: 33, min_weeks: 7}     # 컵/더블바텀
+  invalid_depth_pct: 33           # 초과 시 패턴 무효
+  min_days_per_week: 7            # 최소 N주 = 경과 >= 7*N 달력일
+  stage:
+    step_up_close_gain_pct: 20    # 유효돌파 후 +20% 상승 뒤 베이스 = 단계+1
+    max_stage: 3                  # 1~3 허용, 4+ 금지
+
+quality:                          # §5 품질요건 (전부 충족)
+  atr_le_pivot_pct: 10            # 2*ATR <= 피벗*10%
+  contraction_lookback: 10        # 직전 10일 레인지 <= 피벗*10%
+  contraction_le_pivot_pct: 10
+  dryup_lookback: 10              # 직전 10일 평균거래량 < 베이스 일평균
+
+entry:                            # §4 매수
+  breakout_use_intraday: true     # 돌파만 장중, 나머지 종가
+  chase_limit_pct: 5              # 피벗 +5% 이내만 추격
+  breakout_volume_mult: 1.5       # 돌파일 거래량 >= 20일평균 * 1.5
+  tranche_ratios: [0.5, 0.3, 0.2] # 목표비중 분할 (1/2/3차)
+  pyramid_triggers_pct: [2.5, 5]  # 2차: 1차 +2.5%, 3차: 1차 +5%
+  tranche_price_cap_pct: 3        # 트리거가 +3% 상한, 초과 갭 시 스킵
+
+stop:                             # §6-①
+  method: atr2x                   # atr2x | fixed_pct (Q14)
+  atr_mult: 2.0
+  max_stop_pct: 10                # 손절폭 캡 -10%
+  fixed_pct: 8                    # 대안(고정 -7~8%)
+  fill_model: close_confirmed_next_open   # Q1: vs intraday_touch
+
+exit:                             # §6-②③ + 보조
+  ma_trend: 60
+  trend_break_partial: 0.5        # 60MA 이탈 시 절반 매도
+  trend_recover_days: 3           # 3거래일 내 회복 실패 시 잔량
+  volbreak_full: false            # 거래량 급증 이탈 즉시 전량? (Q7)
+  volbreak_mult: 2.0
+  market_defense_ma: 120
+  market_defense_reduce: 0.5      # 해당 시장 종목 절반
+  eight_week:
+    fast_gain_pct: 20             # 돌파후 3주 내 +20%
+    fast_window_days: 21
+    min_hold_days: 56             # 8주 보유 (①② 외 정지)
+
+sizing:                           # §1
+  risk_per_trade_pct: 1           # 참고(공식이 자동 보장)
+  max_weight_pct: 20              # 1종목 상한
+  min_weight_pct: null            # 하한 없음
+  reserve_pyramid_cash: true      # 2·3차 자금 현금 예약 (Q13)
+
+portfolio:                        # §1 / §3.10
+  max_positions: 8
+  min_positions_soft: 5           # 강제 아님
+
+market_filter:                    # §2
+  entry_ma: 60                    # 지수 > 60MA 정상
+  defense_ma: 120
+  defense_max_equity_pct: 50      # 방어 시 주식비중 상한
+  recover_days: 3                 # 60MA 위 3거래일 유지 → 정상 복귀
+
+risk_governor:                    # §7 생존수칙
+  enabled: true                   # (Q12)
+  consecutive_stops: 3
+  halt_days: 10                   # 2주
