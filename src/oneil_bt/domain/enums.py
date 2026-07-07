@@ -33,6 +33,19 @@ class ExitReason(StrEnum):
     MARKET_DEFENSE_120MA = "MARKET_DEFENSE_120MA"  # 지수 120MA 방어 절반 (§6③)
 
 
+class MarketState(StrEnum):
+    """시장 필터 상태 (규칙서 §2, 계획서 §3.4).
+
+    정상: 지수 > 60일선 → 신규 매수 가능
+    경계: 지수 < 60일선 → 신규 매수 중단 (60일선 위 3거래일 유지 전까지)
+    방어: 지수 < 120일선 → 신규 금지 + 주식 비중 50% 이하
+    """
+
+    NORMAL = "NORMAL"
+    CAUTION = "CAUTION"
+    DEFENSE = "DEFENSE"
+
+
 class FillModelType(StrEnum):
     """손절 체결 시점 모델 (계획서 §12 Q1 — 결과에 큰 영향)."""
 

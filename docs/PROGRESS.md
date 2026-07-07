@@ -10,9 +10,13 @@ Phase별 완료 여부와 §12 미결정 사항 확정 이력을 관리한다.
 - [x] **Phase 0 — 골격·설정·캘린더·로더**
   - `pyproject.toml`, `config/*.yaml`, `domain/{enums,bar,config}`, `data/{datasource,csv_source,loader,calendar,metadata}`, `tests/fixtures/synthetic.py`
   - 유닛테스트 52개 green (calendar, config, datasource, loader, metadata, priceframe)
-- [ ] **Phase 1 — 지표** (`indicators/`) ← **다음**
-- [ ] **Phase 2 — 셋업 필터 + 시장필터** (`rules/{trend_template,overheating,rs_filter,market_filter}`)
-- [ ] **Phase 3A — 베이스 감지기** (`rules/{base_detector,stage_tracker}`)
+- [x] **Phase 1 — 지표** (`indicators/`)
+  - MA(50/60/120/150/200), ATR(14), 52주 고저, 20일 거래대금·거래량, 20일 수익률, RS(6M), `ma200_rising`
+- [x] **Phase 2 — 셋업 필터 + 시장필터** (`rules/{trend_template,overheating,rs_filter,market_filter}`)
+  - 트렌드 템플릿 7조건 AND, 과열(+50% 수직상승·베이스 훅), RS 게이트, 시장 상태머신(복귀 3거래일 히스테리시스)
+  - `MarketState`는 `domain/enums.py`에 추가. 게이트는 심볼별 `IndicatorSet` 주입(`passes(d)`/`excluded(d)`) — 계획서 pseudocode의 `passes(symbol,d)`는 심볼당 IndicatorSet이 이미 캐시 단위라 `symbol` 인자를 뺀 형태로 구현
+  - 유닛테스트 91개 green (기존 72 + rules 19)
+- [ ] **Phase 3A — 베이스 감지기** (`rules/{base_detector,stage_tracker}`) ← **다음**
 - [ ] **Phase 3B — 베이스 품질** (`rules/base_quality`)
 - [ ] **Phase 4A — 체결 프리미티브** (`execution/{orders,cost_model,fill_model}`)
 - [ ] **Phase 4B — 손절·청산 규칙** (`rules/{stop_rule,exit_rules}`)
