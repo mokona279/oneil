@@ -8,7 +8,9 @@
 평단 갱신·손절 재계산·청산)는 소유자인 Portfolio/Engine(Phase 5/6)이 `replace`로
 새 스냅샷을 만들어 반영한다 — 값객체는 불변으로 유지한다.
 
-`ClosedTrade`(계획서 §3.1, RiskGovernor 입력)는 청산 회계가 필요한 Phase 5에서 추가한다.
+`ClosedTrade`(계획서 §3.1, RiskGovernor·리포팅 입력)는 진입·청산 체결 한 쌍의 회계
+단위다. RiskGovernor는 `is_stop`·청산일만 읽어 연속손절을 세고, Phase 7 리포팅은
+`pnl`/`pnl_r`/`hold_days`로 트레이드 로그를 만든다.
 """
 
 from __future__ import annotations
@@ -65,3 +67,46 @@ class Position:
     qty: int
     stop_price: float
     trend_break_date: date | None = None
+
+
+@dataclass(frozen=True)
+class ClosedTrade:
+    """진입·청산 체결 한 쌍의 회계 단위 (계획서 §3.1, Phase 5).
+
+    부분 청산(60MA 절반 등)이면 청산 수량(`exit_fill.qty`)만큼만 매칭한 1행이다 —
+    진입 비용은 청산 수량 비율로 안분한다. `risk_per_share`는 진입 시 1주당 리스크
+    (진입가 − 손절가)로, R 배수(`pnl_r`) 계산의 분모다.
+    """
+
+    symbol: str
+    market: Market
+    tranche_no: int
+    entry_fill: Fill
+    exit_fill: Fill
+    risk_per_share: float
+
+    @property
+    def hold_days(self) -> int:
+        return (self.exit_fill.date - self.entry_fill.date).days
+
+    @property
+    def pnl(self) -> float:
+        """청산 수량 기준 손익(비용 반영). 진입 비용은 청산 수량 비율로 안분."""
+        q = self.exit_fill.qty
+        gross = (self.exit_fill.price - self.entry_fill.price) * q
+        entry_cost = (
+            self.entry_fill.cost * q / self.entry_fill.qty
+            if self.entry_fill.qty else 0.0
+        )
+        return gross - entry_cost - self.exit_fill.cost
+
+    @property
+    def pnl_r(self) -> float:
+        """R 배수 = 손익 / (1주당 리스크 × 청산 수량). 리스크 0이면 0."""
+        denom = self.risk_per_share * self.exit_fill.qty
+        return self.pnl / denom if denom else 0.0
+
+    @property
+    def is_stop(self) -> bool:
+        """손절(§6①) 청산인가 — RiskGovernor 연속손절 카운트 기준."""
+        return self.exit_fill.reason is ExitReason.STOP

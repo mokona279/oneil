@@ -38,8 +38,13 @@ Phase별 완료 여부와 §12 미결정 사항 확정 이력을 관리한다.
   - `EightWeekGuard`(보조): 돌파 후 fast_window(3주=21달력일) 내 진입가 대비 +20% 장중 도달 & 최소보유(56일) 이내면 보호 → ③만 정지, ①② 유지. 판정은 ≤d 바만(룩어헤드 없음)
   - `ExitSignal`(decided_on/reason/qty): 판정 D, 체결 D+1 시가. `domain/trade.Position`(평단·수량·손절가·60MA이탈일 스냅샷, frozen) 신설. `Order.exit`+`DailyBarFillModel.fill_exit`: 기본 D+1 시가 전량, 손절 장중스탑(대안)은 min(O,손절가) 갭하락 반영, 매도세금 시장·기간별
   - 유닛테스트 154개 green (기존 131 + stop 12 + exit 11)
-- [ ] **Phase 5 — 사이저·포트폴리오·리스크거버너** (`portfolio/*`) ← **다음**
-- [ ] **Phase 6 — 엔진(일별 루프)** (`engine/*`, `cli/*`)
+- [x] **Phase 5 — 사이저·포트폴리오·리스크거버너** (`portfolio/{position_sizer,portfolio,risk_governor}` + `domain/trade.ClosedTrade`)
+  - `PositionSizer`: 비중 = min(상한20%, risk_per_trade%/손절폭%) — 손절폭%는 StopRule(§6①)과 동일 산식(2×ATR 진입가% + -10% 캡). 트랜치 수량은 자본×비중×비율/체결가 정수주(floor)
+  - `Portfolio`: 현금·포지션(dict)·예약현금의 단일 소유자. `apply_buy`(신규/피라미딩 평단·손절 갱신)·`apply_sell`(부분/전량, 전량 시 예약 정리). 회계 항등식 자본=현금+평가 유지. 슬롯 `max_positions`(8)·현금 `can_open`. `reserve/release`로 2·3차 예약현금이 `available_cash`에서 빠짐(토글 `reserve_pyramid_cash`)
+  - `RiskGovernor`: 연속손절 `consecutive_stops`(3)회 → `halt_days`(10거래일) 신규 차단·자동해제. 손절 아닌 청산이 끼면 카운터 리셋. 거래일 이동은 TradingCalendar 주입(없으면 달력일 근사). `enabled` 토글(§12 Q12)
+  - `ClosedTrade`(§3.1) 신설: 진입·청산 체결 쌍 회계(부분청산 안분 pnl·pnl_r·hold_days·is_stop)
+  - 유닛테스트 174개 green (기존 154 + portfolio 20)
+- [ ] **Phase 6 — 엔진(일별 루프)** (`engine/*`, `cli/*`) ← **다음**
 - [ ] **Phase 7 — 리포팅** (`reporting/*`)
 - [ ] **Phase 8 — 통합·회귀·문서** (`tests/integration/*`, `data_example/`)
 
