@@ -31,8 +31,14 @@ Phase별 완료 여부와 §12 미결정 사항 확정 이력을 관리한다.
   - 체결 규칙(§6.2): 1차 돌파=`max(O,피벗)`, 갭업 추격상한(+5%) 초과 시 장중 저가가 상한 복귀하면 상한 체결·아니면 미체결. 2·3차=`max(O,트리거)`, 상한(+3%) 초과 갭이면 그 회차 스킵(1차와 달리 장중 복귀 불허). 거래량 게이트 `Vol≥20일평균×1.5`
   - 슬리피지는 체결가를 흔들지 않고 비용 항목(bp)으로 반영 → 결정론. 세금 계단은 `from_date<=d`인 마지막 시행일(포함), 최초 이전이면 가장 이른 계단 방어 적용
   - 유닛테스트 131개 green (기존 113 + execution 18)
-- [ ] **Phase 4B — 손절·청산 규칙** (`rules/{stop_rule,exit_rules}`) ← **다음**
-- [ ] **Phase 5 — 사이저·포트폴리오·리스크거버너** (`portfolio/*`)
+- [x] **Phase 4B — 손절·청산 규칙** (`rules/{stop_rule,exit_rules}` + `domain/trade.Position` + `execution` 청산체결)
+  - `StopRule`: 손절가 = max(평단−2×ATR, 평단×(1−10%)) — 2×ATR가 평단 10% 초과 시 -10% 캡 바닥으로 클램프, 평단 상승 시 재계산. `hit(pos,d)`는 체결모델별 종가(기본)/장중저가(대안) ≤ 손절가
+  - `TrendExitRule`(§6②): 60MA 이탈 종가 → 절반(HALF). 이탈 후 거래일 카운트 3 미회복 → 잔량 전량(REST), 3거래일 내 종가 회복 → `reason=None`(CLEAR)로 대기청산 취소. `volbreak_full` 시 거래량 급증 이탈은 처음부터 전량(VOLBREAK)
+  - `MarketDefenseRule`(§6③): mstate=DEFENSE면 해당시장 종목 절반. 8주 보호 종목은 정지(None). 반복축소는 엔진이 `defense_triggered_on` 전이일에만 호출해 방지
+  - `EightWeekGuard`(보조): 돌파 후 fast_window(3주=21달력일) 내 진입가 대비 +20% 장중 도달 & 최소보유(56일) 이내면 보호 → ③만 정지, ①② 유지. 판정은 ≤d 바만(룩어헤드 없음)
+  - `ExitSignal`(decided_on/reason/qty): 판정 D, 체결 D+1 시가. `domain/trade.Position`(평단·수량·손절가·60MA이탈일 스냅샷, frozen) 신설. `Order.exit`+`DailyBarFillModel.fill_exit`: 기본 D+1 시가 전량, 손절 장중스탑(대안)은 min(O,손절가) 갭하락 반영, 매도세금 시장·기간별
+  - 유닛테스트 154개 green (기존 131 + stop 12 + exit 11)
+- [ ] **Phase 5 — 사이저·포트폴리오·리스크거버너** (`portfolio/*`) ← **다음**
 - [ ] **Phase 6 — 엔진(일별 루프)** (`engine/*`, `cli/*`)
 - [ ] **Phase 7 — 리포팅** (`reporting/*`)
 - [ ] **Phase 8 — 통합·회귀·문서** (`tests/integration/*`, `data_example/`)

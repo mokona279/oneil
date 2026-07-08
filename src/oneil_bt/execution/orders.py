@@ -9,14 +9,18 @@
     - 2·3차 피라미딩: 지정가 매수. 트리거 = 1차가 +2.5%/+5%, 상한 = 트리거 +3%.
       다음날 갭이 상한을 넘어 있으면 그 회차는 건너뛴다.
 
-수량(`qty`)은 사이저(Phase 5)가 채운다. Phase 4A의 체결 테스트에서는 직접 지정한다.
+규칙서 §6 매도(Phase 4B):
+    - 시장가 매도. 손절(장중 자동스탑 대안)일 때만 `trigger`에 손절가를 실어, 갭하락 시
+      `min(시가, 손절가)` 체결을 계산한다. 세금이 시장별이라 `market`을 함께 싣는다.
+
+수량(`qty`)은 사이저(Phase 5)가 채운다. Phase 4A/4B의 체결 테스트에서는 직접 지정한다.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..domain.enums import EntryReason, ExitReason, OrderKind
+from ..domain.enums import EntryReason, ExitReason, Market, OrderKind
 
 
 @dataclass(frozen=True)
@@ -27,8 +31,9 @@ class Order:
     kind: OrderKind
     reason: EntryReason | ExitReason
     qty: int
-    trigger: float | None = None    # 스탑/지정가 발동가 (STOP_BUY: 피벗, LIMIT_BUY: 트리거)
+    trigger: float | None = None    # 스탑/지정가 발동가 (STOP_BUY: 피벗, LIMIT_BUY: 트리거, 손절: 손절가)
     limit_cap: float | None = None  # 지정가 상한 (초과 갭이면 미체결/스킵)
+    market: Market | None = None    # 매도 세금 계산용 (시장별 거래세)
 
     @classmethod
     def breakout(
@@ -66,4 +71,23 @@ class Order:
             qty=qty,
             trigger=trigger_price,
             limit_cap=trigger_price * (1.0 + cap_pct / 100.0),
+        )
+
+    @classmethod
+    def exit(
+        cls,
+        symbol: str,
+        qty: int,
+        reason: ExitReason,
+        market: Market,
+        stop_price: float | None = None,
+    ) -> "Order":
+        """청산 시장가 매도. `stop_price`는 손절 장중스탑(대안 모델) 체결가 계산용."""
+        return cls(
+            symbol=symbol,
+            kind=OrderKind.MARKET_SELL,
+            reason=reason,
+            qty=qty,
+            trigger=stop_price,
+            market=market,
         )

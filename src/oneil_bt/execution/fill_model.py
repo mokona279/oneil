@@ -21,6 +21,12 @@
 거래량 게이트(`volume_confirmed`)는 돌파일 종가 확정 거래량이 20일 평균의 1.5배 이상
 인지 본다 — 2·3차 감시주문 예약 여부 판단용(§6.2). 1차는 이미 체결됐으므로 게이트와
 무관하다. 게이트 판정 자체는 엔진(파이프라인)이 소비한다.
+
+청산(`fill_exit`, Phase 4B, MARKET_SELL):
+    - 기본(종가확정): 판정 다음날(D+1) 바를 받아 **시가 전량** 체결. 갭 여부 무관(§6.2).
+    - 손절 장중스탑(대안 `intraday_touch`): 판정일 D 바를 받아 `min(O, 손절가)` 체결
+      — 갭하락(`O < 손절가`)이면 시가, 아니면 손절가. 손절(STOP) 사유에만 적용된다.
+    엔진이 어느 날 바를 넘길지 결정하고, 이 모델은 그 바에서 체결가만 만든다.
 """
 
 from __future__ import annotations
@@ -32,16 +38,18 @@ from typing import Protocol
 import pandas as pd
 
 from ..domain.config import Config
+from ..domain.enums import ExitReason, FillModelType, Market, OrderKind
 from ..domain.trade import Fill
 from .cost_model import CostModel
 from .orders import Order
 
 
 class FillModel(Protocol):
-    """체결 계약. Phase 4A는 진입/피라미딩. 청산(`fill_exit`)은 4B에서 추가."""
+    """체결 계약. 진입/피라미딩(4A) + 청산(4B)."""
 
     def fill_entry(self, bar: pd.Series, order: Order) -> Fill | None: ...
     def fill_pyramid(self, bar: pd.Series, order: Order) -> Fill | None: ...
+    def fill_exit(self, bar: pd.Series, order: Order) -> Fill: ...
 
 
 def _bar_date(bar: pd.Series) -> date:
@@ -97,6 +105,29 @@ class DailyBarFillModel:
         if price > cap:
             return None  # 갭이 상한 초과 → 그 회차 스킵
         return self._buy_fill(bar, price, order)
+
+    # ------------------------------------------------------------------ #
+    # 청산 체결 (손절·60MA·시장방어)
+    # ------------------------------------------------------------------ #
+    def fill_exit(self, bar: pd.Series, order: Order) -> Fill:
+        """청산 시장가 매도 체결. 세금은 시장(order.market)·매도일 기준."""
+        if order.kind is not OrderKind.MARKET_SELL:
+            raise ValueError("fill_exit requires a MARKET_SELL order")
+        o = float(bar["open"])
+        if (
+            order.reason is ExitReason.STOP
+            and self.fcfg.stop_fill_model is FillModelType.INTRADAY_TOUCH
+        ):
+            # 장중 자동스탑: 저가가 손절가에 닿으면 손절가 체결, 갭하락이면 시가.
+            stop = order.trigger
+            price = min(o, stop) if stop is not None else o
+        else:
+            # 종가확정(기본) 및 60MA·시장방어: 다음날(D+1) 시가 전량.
+            price = o
+        d = _bar_date(bar)
+        market = order.market if order.market is not None else Market.KOSPI
+        cost = self.cost.sell_cost(price, order.qty, d, market)
+        return Fill(date=d, price=price, qty=order.qty, reason=order.reason, cost=cost)
 
     # ------------------------------------------------------------------ #
     # 거래량 게이트 (2·3차 예약 여부)
