@@ -16,8 +16,12 @@ Phase별 완료 여부와 §12 미결정 사항 확정 이력을 관리한다.
   - 트렌드 템플릿 7조건 AND, 과열(+50% 수직상승·베이스 훅), RS 게이트, 시장 상태머신(복귀 3거래일 히스테리시스)
   - `MarketState`는 `domain/enums.py`에 추가. 게이트는 심볼별 `IndicatorSet` 주입(`passes(d)`/`excluded(d)`) — 계획서 pseudocode의 `passes(symbol,d)`는 심볼당 IndicatorSet이 이미 캐시 단위라 `symbol` 인자를 뺀 형태로 구현
   - 유닛테스트 91개 green (기존 72 + rules 19)
-- [ ] **Phase 3A — 베이스 감지기** (`rules/{base_detector,stage_tracker}`) ← **다음**
-- [ ] **Phase 3B — 베이스 품질** (`rules/base_quality`)
+- [x] **Phase 3A — 베이스 감지기** (`rules/{base_detector,stage_tracker}`)
+  - 전방 스캔 상태머신: 시작점(신고가)·피벗(장중 최고가)·깊이(장중 고저)·기간(달력일 7×N). 깊이 티어 15%/33% → 5주/7주, D>33% 패턴 무효·재시작
+  - `base_asof(d)`는 구조값(피벗·저점·깊이)을 ≤d-1로 확정, 기간만 돌파일 d 기준(§5) — 룩어헤드 없음. `is_breakout(d,base)`=d 장중고가≥피벗
+  - `StageTracker`(3훅: `on_bar`/`stage_for_new_base`/`on_breakout`) 위임 — +20% 종가랠리→단계+1, 미달 재베이스→유지, 직전베이스 저점 하회→1 리셋. 감지기는 4단계도 그대로 카운트(진입 게이트는 엔진 몫)
+  - 유닛테스트 104개 green (기존 91 + base 13)
+- [ ] **Phase 3B — 베이스 품질** (`rules/base_quality`) ← **다음**
 - [ ] **Phase 4A — 체결 프리미티브** (`execution/{orders,cost_model,fill_model}`)
 - [ ] **Phase 4B — 손절·청산 규칙** (`rules/{stop_rule,exit_rules}`)
 - [ ] **Phase 5 — 사이저·포트폴리오·리스크거버너** (`portfolio/*`)
