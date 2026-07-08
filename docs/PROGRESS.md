@@ -21,8 +21,12 @@ Phase별 완료 여부와 §12 미결정 사항 확정 이력을 관리한다.
   - `base_asof(d)`는 구조값(피벗·저점·깊이)을 ≤d-1로 확정, 기간만 돌파일 d 기준(§5) — 룩어헤드 없음. `is_breakout(d,base)`=d 장중고가≥피벗
   - `StageTracker`(3훅: `on_bar`/`stage_for_new_base`/`on_breakout`) 위임 — +20% 종가랠리→단계+1, 미달 재베이스→유지, 직전베이스 저점 하회→1 리셋. 감지기는 4단계도 그대로 카운트(진입 게이트는 엔진 몫)
   - 유닛테스트 104개 green (기존 91 + base 13)
-- [ ] **Phase 3B — 베이스 품질** (`rules/base_quality`) ← **다음**
-- [ ] **Phase 4A — 체결 프리미티브** (`execution/{orders,cost_model,fill_model}`)
+- [x] **Phase 3B — 베이스 품질** (`rules/base_quality`)
+  - 진입 4요건: ①과열 미해당(OverheatingFilter 재사용) ②2×ATR≤피벗10% ③수축(직전10일 고저레인지≤피벗10%) ④드라이업(직전10일 평균거래량<베이스 전체 일평균)
+  - `passes(d, base)→QualityResult`(4요건 개별 + `passed` 종합). 구조 품질은 **≤d-1** 세션만으로 확정(돌파일 d 가격·거래량 미사용 → 룩어헤드 없음). '직전 10일'·'베이스 전체'는 [start, d-1] 실거래 세션
+  - 과열 요건은 `has_base=True`로 조회 — 유효 베이스가 손에 있으니 조항(a) '베이스 없이 수직상승'엔 해당 불가. v1은 (a)만 구현(§12 Q3)이라 사실상 통과, (b)(c) 데이터 확보 시 자동 반영
+  - 유닛테스트 113개 green (기존 104 + quality 9)
+- [ ] **Phase 4A — 체결 프리미티브** (`execution/{orders,cost_model,fill_model}`) ← **다음**
 - [ ] **Phase 4B — 손절·청산 규칙** (`rules/{stop_rule,exit_rules}`)
 - [ ] **Phase 5 — 사이저·포트폴리오·리스크거버너** (`portfolio/*`)
 - [ ] **Phase 6 — 엔진(일별 루프)** (`engine/*`, `cli/*`)
