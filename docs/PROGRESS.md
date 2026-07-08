@@ -26,8 +26,12 @@ Phase별 완료 여부와 §12 미결정 사항 확정 이력을 관리한다.
   - `passes(d, base)→QualityResult`(4요건 개별 + `passed` 종합). 구조 품질은 **≤d-1** 세션만으로 확정(돌파일 d 가격·거래량 미사용 → 룩어헤드 없음). '직전 10일'·'베이스 전체'는 [start, d-1] 실거래 세션
   - 과열 요건은 `has_base=True`로 조회 — 유효 베이스가 손에 있으니 조항(a) '베이스 없이 수직상승'엔 해당 불가. v1은 (a)만 구현(§12 Q3)이라 사실상 통과, (b)(c) 데이터 확보 시 자동 반영
   - 유닛테스트 113개 green (기존 104 + quality 9)
-- [ ] **Phase 4A — 체결 프리미티브** (`execution/{orders,cost_model,fill_model}`) ← **다음**
-- [ ] **Phase 4B — 손절·청산 규칙** (`rules/{stop_rule,exit_rules}`)
+- [x] **Phase 4A — 체결 프리미티브** (`execution/{orders,cost_model,fill_model}` + `domain/trade.py`)
+  - `Fill`(비용 반영 체결 값객체), `Order`(+`OrderKind`; `breakout`/`pyramid` 팩토리로 상한 계산 일원화), `CostModel`(편도 수수료+슬리피지, 매도 시 시장·기간별 거래세 계단), `DailyBarFillModel`
+  - 체결 규칙(§6.2): 1차 돌파=`max(O,피벗)`, 갭업 추격상한(+5%) 초과 시 장중 저가가 상한 복귀하면 상한 체결·아니면 미체결. 2·3차=`max(O,트리거)`, 상한(+3%) 초과 갭이면 그 회차 스킵(1차와 달리 장중 복귀 불허). 거래량 게이트 `Vol≥20일평균×1.5`
+  - 슬리피지는 체결가를 흔들지 않고 비용 항목(bp)으로 반영 → 결정론. 세금 계단은 `from_date<=d`인 마지막 시행일(포함), 최초 이전이면 가장 이른 계단 방어 적용
+  - 유닛테스트 131개 green (기존 113 + execution 18)
+- [ ] **Phase 4B — 손절·청산 규칙** (`rules/{stop_rule,exit_rules}`) ← **다음**
 - [ ] **Phase 5 — 사이저·포트폴리오·리스크거버너** (`portfolio/*`)
 - [ ] **Phase 6 — 엔진(일별 루프)** (`engine/*`, `cli/*`)
 - [ ] **Phase 7 — 리포팅** (`reporting/*`)

@@ -33,6 +33,14 @@ class ExitReason(StrEnum):
     MARKET_DEFENSE_120MA = "MARKET_DEFENSE_120MA"  # 지수 120MA 방어 절반 (§6③)
 
 
+class OrderKind(StrEnum):
+    """주문 유형 (계획서 §3.1, §6.2)."""
+
+    STOP_BUY = "STOP_BUY"        # 자동감시(스탑) 매수 — 돌파 1차
+    LIMIT_BUY = "LIMIT_BUY"      # 지정가 매수 — 피라미딩 2·3차
+    MARKET_SELL = "MARKET_SELL"  # 시장가 매도 — 청산 (Phase 4B)
+
+
 class MarketState(StrEnum):
     """시장 필터 상태 (규칙서 §2, 계획서 §3.4).
 
