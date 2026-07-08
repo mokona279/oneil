@@ -44,8 +44,15 @@ Phase별 완료 여부와 §12 미결정 사항 확정 이력을 관리한다.
   - `RiskGovernor`: 연속손절 `consecutive_stops`(3)회 → `halt_days`(10거래일) 신규 차단·자동해제. 손절 아닌 청산이 끼면 카운터 리셋. 거래일 이동은 TradingCalendar 주입(없으면 달력일 근사). `enabled` 토글(§12 Q12)
   - `ClosedTrade`(§3.1) 신설: 진입·청산 체결 쌍 회계(부분청산 안분 pnl·pnl_r·hold_days·is_stop)
   - 유닛테스트 174개 green (기존 154 + portfolio 20)
-- [ ] **Phase 6 — 엔진(일별 루프)** (`engine/*`, `cli/*`) ← **다음**
-- [ ] **Phase 7 — 리포팅** (`reporting/*`)
+- [x] **Phase 6 — 엔진(일별 루프)** (`engine/{context,engine}` + `cli/{run_single,run_portfolio}`)
+  - `BacktestEngine.run(start,end,symbols=None)`: 하루를 §6.3 순서로 처리 — ①대기청산 체결(전일 종가결정→당일 시가) ②장중 자동스탑(대안모델) ③피라미딩 2·3차(장중, 시장필터 무관 Q11) ④신규 돌파진입(≤d-1 게이트+장중 돌파, RS 내림·심볼 사전순 정렬) ⑤청산판정(종가: 손절·60MA·방어→d+1 대기) ⑥자본곡선 기록
+  - 조립은 `context.py`의 `build_symbol_context`/`build_market_context`(지표 사전계산 캐시). `TradePlan`이 포지션의 경로의존 진입상태(피벗·목표명목·트랜치진행·예약현금·1주당리스크)를 소유 — `Position`(값객체)이 담지 않는 "다음 트랜치를 어떻게 살까"
+  - 사이징·손절 재계산 ATR·진입 게이트는 **직전 세션(d-1)** 값 사용. 돌파 판정만 d 장중 고가. 룩어헤드 회귀 테스트로 보증(미래 바 조작이 그 이전 자본곡선 불변)
+  - 돌파일 거래량 게이트(1.5×) 통과 시에만 2·3차 예약(§6.1), 실패 시 VOL_FAIL·피라미딩 없음. 트랜치 체결마다 예약 release·평단/손절 갱신
+  - 단일종목=`symbols=[sym]`, 포트폴리오=생략(전체). 동일 엔진, 유니버스 크기만 다름. `BacktestResult`(자본곡선·트레이드·이벤트) 산출 → Phase 7 입력
+  - **계획서 대비 변경**: `engine/pipeline.py`는 별도 분리 대신 엔진 본체의 `_process_*` 절차로 통합(과분할 회피). 결과 자료구조는 `context.py`에 병치
+  - 유닛테스트 180개 green (기존 174 + engine 6: 단일종목 진입·자본곡선, 피라미딩, 결정론 2회동일, 슬롯상한, 룩어헤드 가드, 무신호 자본보존)
+- [ ] **Phase 7 — 리포팅** (`reporting/*`) ← **다음**
 - [ ] **Phase 8 — 통합·회귀·문서** (`tests/integration/*`, `data_example/`)
 
 ## §12 결정사항 확정 로그
