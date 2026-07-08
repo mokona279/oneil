@@ -22,6 +22,7 @@ from ..domain.config import Config
 from ..domain.enums import Market
 from ..engine.context import BacktestResult
 from ..engine.engine import BacktestEngine
+from ..reporting import write_report
 
 
 def build_source(
@@ -75,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--end", required=True)
     parser.add_argument("--cash", type=float, default=1.0e8)
     parser.add_argument("--symbols", default=None, help="쉼표 구분 종목코드(생략 시 전체)")
+    parser.add_argument("--out", default=None, help="리포트 출력 디렉토리(생략 시 요약만)")
     args = parser.parse_args(argv)
 
     index_paths: dict[Market, Path | str] = {Market.KOSPI: args.kospi}
@@ -90,6 +92,11 @@ def main(argv: list[str] | None = None) -> int:
         initial_cash=args.cash, symbols=symbols,
     )
     print(format_summary(result))
+    if args.out:
+        report = write_report(result, args.out)
+        print("\n[성과 지표]")
+        print(report.summary())
+        print(f"\n리포트 저장: {args.out}")
     return 0
 
 

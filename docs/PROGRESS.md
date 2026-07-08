@@ -52,8 +52,12 @@ Phase별 완료 여부와 §12 미결정 사항 확정 이력을 관리한다.
   - 단일종목=`symbols=[sym]`, 포트폴리오=생략(전체). 동일 엔진, 유니버스 크기만 다름. `BacktestResult`(자본곡선·트레이드·이벤트) 산출 → Phase 7 입력
   - **계획서 대비 변경**: `engine/pipeline.py`는 별도 분리 대신 엔진 본체의 `_process_*` 절차로 통합(과분할 회피). 결과 자료구조는 `context.py`에 병치
   - 유닛테스트 180개 green (기존 174 + engine 6: 단일종목 진입·자본곡선, 피라미딩, 결정론 2회동일, 슬롯상한, 룩어헤드 가드, 무신호 자본보존)
-- [ ] **Phase 7 — 리포팅** (`reporting/*`) ← **다음**
-- [ ] **Phase 8 — 통합·회귀·문서** (`tests/integration/*`, `data_example/`)
+- [x] **Phase 7 — 리포팅** (`reporting/{writer,trade_log,equity_curve,event_list,metrics,report}` + CLI `--out`)
+  - §9 출력 4종: 트레이드 로그 CSV(진입·청산 매칭 1행, `trade_id`=(심볼,진입일) 그룹핑·부분청산 동일 id), 일별 자본곡선 CSV(`market_state`는 `KOSPI=NORMAL;…` 시장 사전순 직렬화), 육안검증 이벤트 CSV(detail에서 pivot/depth/weeks/stage 추출), 성과지표 `metrics.txt`+`metrics.json`
+  - `PerformanceMetrics`(순수·결정론): 총수익·CAGR(자본곡선 첫~끝 달력일 연환산)·MDD(최고점 대비 최대낙폭)·승률·손익비(평균이익/|평균손실|)·기대값R(pnl_r 평균)·평균보유·평균노출·총비용(진입안분+청산)·청산분해(손절/60MA/방어). 무트레이드·자본≤0 방어
+  - CSV는 `utf-8-sig`+`\n` 고정(`writer.write_csv`) → 엑셀/한글 호환 & 골든파일 재현성. `write_report(result, out_dir)`가 4종 기록 후 `Report`(지표+경로) 반환, CLI `--out`가 재사용
+  - 유닛테스트 186개 green (기존 180 + reporting 6: 손계산 대조·CAGR 연환산·청산분해·무트레이드 방어·CSV 스키마·trade_id 그룹핑)
+- [ ] **Phase 8 — 통합·회귀·문서** (`tests/integration/*`, `data_example/`) ← **다음**
 
 ## §12 결정사항 확정 로그
 
