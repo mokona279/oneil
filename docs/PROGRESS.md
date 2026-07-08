@@ -57,7 +57,12 @@ Phase별 완료 여부와 §12 미결정 사항 확정 이력을 관리한다.
   - `PerformanceMetrics`(순수·결정론): 총수익·CAGR(자본곡선 첫~끝 달력일 연환산)·MDD(최고점 대비 최대낙폭)·승률·손익비(평균이익/|평균손실|)·기대값R(pnl_r 평균)·평균보유·평균노출·총비용(진입안분+청산)·청산분해(손절/60MA/방어). 무트레이드·자본≤0 방어
   - CSV는 `utf-8-sig`+`\n` 고정(`writer.write_csv`) → 엑셀/한글 호환 & 골든파일 재현성. `write_report(result, out_dir)`가 4종 기록 후 `Report`(지표+경로) 반환, CLI `--out`가 재사용
   - 유닛테스트 186개 green (기존 180 + reporting 6: 손계산 대조·CAGR 연환산·청산분해·무트레이드 방어·CSV 스키마·trade_id 그룹핑)
-- [ ] **Phase 8 — 통합·회귀·문서** (`tests/integration/*`, `data_example/`) ← **다음**
+- [x] **Phase 8 — 통합·회귀·문서** (`tests/integration/*`, `data_example/`, `generate.py`, README)
+  - `data_example/`: 결정론 생성기(`generate.py`, 난수 없이 순수 함수) + 산출 CSV. 3종목(KOSPI 승자·KOSPI 손절·KOSDAQ 승자)×320세션. 거래대금 200억으로 트렌드 템플릿 100억 게이트 통과. 시나리오가 돌파진입·피라미딩·손절·60MA청산을 자극
+  - `tests/integration/test_smoke.py`(6): CsvDataSource 로드→엔진 완주, 자본곡선 범위·정렬·무중복, **회계 항등식**(equity=cash+holdings) 일별 검증, 노출도 [0,100], 진입·피라미딩·손절 이벤트 발생, 리포트 4종 산출물 스키마(metrics.json 키·행수 대조), 단일종목 모드 완주
+  - `tests/integration/test_golden.py`(3): 2회 실행 비트동일, **골든 SHA-256 다이제스트** 고정(자본곡선·트레이드·이벤트 직렬화 → 회귀 감시), 파라미터 민감도(비중상한 20%→5% 시 결과·최대노출 변화 → 배선 확인)
+  - 골든 데이터/규칙 변경 시 `GOLDEN_DIGEST` 갱신 필요. CLI 직접 실행은 `PYTHONPATH=src`(pytest는 pyproject `pythonpath`로 자동). README에 실행 예시·현재 상태(전 Phase 완료) 반영
+  - 유닛+통합 195개 green (기존 186 + integration 9)
 
 ## §12 결정사항 확정 로그
 

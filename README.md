@@ -10,19 +10,17 @@
 
 ---
 
-## 다음에 무엇을 해야 하나 (현재 상태)
+## 현재 상태
 
-**Phase 0 완료** — 골격·설정·캘린더·로더 구축, 유닛테스트 52개 green.
-
-**다음 착수: Phase 1 — 지표(`indicators/`)**
-MA(50/60/120/150/200), ATR(14), 52주 고저, 20일 거래대금·수익률, RS(6M), `ma200_rising`.
+**Phase 0~8 완료** — 골격부터 통합·회귀·문서까지 전 Phase 구축, 유닛+통합 테스트 195개 green.
+계획서(§8)의 v1 로드맵 전 구간이 끝났다.
 
 각 Phase의 상세 목표·산출 파일·테스트·"세션 시작 컨텍스트"는 계획서
 [`docs/backtest_plan.md`](docs/backtest_plan.md) §8에 있다. 진행 현황과 미결정 사항(§12 Q)
 확정 이력은 [`docs/PROGRESS.md`](docs/PROGRESS.md)에서 관리한다.
 
-> **새 구현 세션 시작 방법**: `docs/backtest_plan.md`의 해당 Phase "세션 시작 컨텍스트"를
-> 붙여넣으면 선행 Phase 산출물만으로 독립 착수할 수 있다.
+**후속 과제**(구조는 v1에서 확보, 계획서 §11): 파라미터 민감도 스윕 하니스,
+워크포워드/롤링 검증, API 데이터 소스 교체, 펀더멘털·수급 소스 통합, 생존편향 보정.
 
 ---
 
@@ -85,7 +83,26 @@ C:\Users\mh.han\repos\daytrading\.venv\Scripts\python.exe
 "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" -m pytest -q
 ```
 
-`pyproject.toml`의 `pythonpath = ["src", "."]` 설정으로 별도 설치 없이 `import` 가능하다.
+`pyproject.toml`의 `pythonpath = ["src", "."]` 설정으로 (pytest는) 별도 설치 없이 `import` 가능하다.
+
+### 백테스트 실행 (소형 예제 데이터)
+
+`data_example/`에 통합 테스트용 소형 데이터셋이 있다(재현: `python data_example/generate.py`).
+CLI 직접 실행 시엔 `PYTHONPATH=src`를 지정한다:
+
+```bash
+PYTHONPATH=src "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" \
+    -m oneil_bt.cli.run_portfolio \
+    --price-dir data_example/prices \
+    --kospi data_example/kospi.csv --kosdaq data_example/kosdaq.csv \
+    --meta data_example/meta.csv \
+    --rules config/rules_v3-3.yaml --costs config/costs.yaml \
+    --start 2019-01-02 --end 2020-03-24 --cash 1e8 --out out/example
+```
+
+`--out`을 주면 트레이드 로그·자본곡선·이벤트 CSV와 성과지표(`metrics.txt`/`.json`)를
+그 디렉토리에 쓴다(§9). 단일종목은 `run_single --symbol 005930 ...`. 데이터셋 상세는
+[`data_example/README.md`](data_example/README.md).
 
 ---
 
