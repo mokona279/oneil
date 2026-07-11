@@ -33,6 +33,7 @@
 | [`docs/backtest_plan.md`](docs/backtest_plan.md) | 구현 계획서 — 아키텍처, 인터페이스 계약, Phase별 계획, 미결정 질문(§12) |
 | [`docs/backtest_plan_prompt.md`](docs/backtest_plan_prompt.md) | 계획서를 생성한 원본 프롬프트(요구사항 정의) |
 | [`docs/PROGRESS.md`](docs/PROGRESS.md) | 진행 현황 체크리스트 + 결정사항 확정 로그 |
+| [`docs/data_fetch_plan.md`](docs/data_fetch_plan.md) | 실데이터 수집 스크립트(`oneil_fetch`) 구현 계획 — pykrx/FDR (구현 완료, ↓ 실행 예시) |
 
 ---
 
@@ -55,6 +56,9 @@ oneil/
 │  ├─ reporting/  (Phase 7)    trade_log / equity_curve / metrics / event_list / report
 │  ├─ analysis/   (후속 §11)   override(점경로 config 치환) / sweep(그리드 실행·CSV)
 │  └─ cli/        (Phase 6~)   run_single / run_portfolio / run_sweep
+├─ src/oneil_fetch/            # 실데이터 수집 (pykrx/FDR → 엔진 CSV). oneil_bt 무의존
+│  ├─ krx_client / transform / universe / incremental / meta_builder / state / writer
+│  └─ env_loader / cli / __main__
 └─ tests/
    ├─ fixtures/   synthetic.py  (합성 OHLCV 빌더)
    ├─ unit/       (모듈별 미러링)
@@ -126,6 +130,53 @@ PYTHONPATH=src "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" \
 축은 `--param <점경로>=<v1,v2,...>`(반복) 또는 `--grid <grid.yaml>`(`{점경로: [값,...]}`)로
 지정한다. 값은 숫자·`true/false`·Enum 문자열(예: `stop.method=atr2x,fixed_pct`)을 받는다.
 파이썬 API는 `oneil_bt.analysis`의 `run_sweep`/`ParameterGrid`/`apply_overrides`.
+
+### 실데이터 수집 (`oneil_fetch`)
+
+pykrx(시세·지수·상장주식수)와 FinanceDataReader(상장일)로 실제 코스피/코스닥 시세를
+받아 위 백테스트가 읽는 CSV 레이아웃(`prices/{symbol}.csv`, `kospi.csv`, `kosdaq.csv`,
+`meta.csv`)으로 저장한다. `oneil_bt`는 한 줄도 수정하지 않으며, 산출물이 엔진 로더 검증을
+통과하는지 쓰기 시 자기검증한다. 설계는 [`docs/data_fetch_plan.md`](docs/data_fetch_plan.md).
+
+**1) 의존성 설치** (공유 venv에):
+
+```bash
+"C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" -m pip install pykrx finance-datareader
+# 또는: pip install -e ".[fetch]"
+```
+
+**2) KRX 자격증명** — 이 venv의 pykrx는 KRX 데이터 접근에 로그인 세션을 요구한다
+(`KRX_ID`/`KRX_PW` 미설정 시 지수·티커목록·시가총액·거래대금 엔드포인트가 빈 응답을 준다).
+[`.env.example`](.env.example)를 복사해 `.env`(gitignore 대상)를 만들고 KRX 계정
+(https://data.krx.co.kr)을 채운 뒤 `--env-file`로 넘긴다. `.env`는 코드가 파이썬으로만
+로드하며 값은 로그에 남기지 않는다.
+
+**3) 수집 실행**:
+
+```bash
+# 지정 종목만 (증분·자기검증·리포트 포함)
+PYTHONPATH=src "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" \
+    -m oneil_fetch --symbols 005930,000660,035720 \
+    --start 2018-07-01 --end 2020-12-31 --out data \
+    --env-file C:/path/to/.env
+
+# 전 유니버스(코스피+코스닥 보통주, 스팩 제외) — 수 시간 소요, 중단 시 이어받기
+PYTHONPATH=src "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" \
+    -m oneil_fetch --start 2018-07-01 --end 2026-07-10 --out data --env-file C:/path/to/.env
+```
+
+- `--start`는 **백테스트 예정 시작일보다 최소 15개월(달력) 앞**으로 잡는다(200MA+52주 워밍업).
+- `--dry-run`으로 유니버스·계획만 확인(시세 미수집). `--full-refresh`로 증분 무시 전체 재수집.
+- 출력 `data/`는 **gitignore 대상**. 수집 후 위 `run_portfolio` 예시의 `--price-dir data/prices …`로
+  실데이터 백테스트를 돌린다.
+
+**계획 대비 구현 노트** (실데이터로 확인된 사항):
+- **거래대금(value)**: 이 pykrx 버전은 `adjusted=True`에서 거래대금 대신 등락률을 준다.
+  거래대금은 수정과 무관한 실측값이므로 `adjusted=False`를 추가 호출해 병합한다(종목당 2호출,
+  근사 아님 — 계획서 §9 Q4 실측 원칙 충족).
+- **수정주가 반올림 보정**: 수정 OHLC는 필드별 독립 반올림으로 종가가 고가보다 1원 큰 식의
+  정합 위반이 흔하다. 이런 미세 위반(종가 대비 0.5% 이하)은 행을 버리지 않고 high/low를
+  클램프해 보존한다(‘종가=고가’ 강세일 손실 방지). 큰 붕괴만 삭제.
 
 ---
 

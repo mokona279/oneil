@@ -16,6 +16,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
 parquet = ["pyarrow>=12.0"]
+# 실데이터 수집(oneil_fetch) 전용. 백테스트 코어(oneil_bt)는 의존하지 않는다.
+fetch = ["pykrx>=1.0", "finance-datareader>=0.9"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -25,3 +27,6 @@ where = ["src"]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
 addopts = "-ra"
+markers = [
+    "network: 실 KRX/네트워크 호출이 필요한 테스트 (pykrx 미설치 시 자동 skip)",
+]
