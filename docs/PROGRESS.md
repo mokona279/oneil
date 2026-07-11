@@ -64,6 +64,15 @@ Phase별 완료 여부와 §12 미결정 사항 확정 이력을 관리한다.
   - 골든 데이터/규칙 변경 시 `GOLDEN_DIGEST` 갱신 필요. CLI 직접 실행은 `PYTHONPATH=src`(pytest는 pyproject `pythonpath`로 자동). README에 실행 예시·현재 상태(전 Phase 완료) 반영
   - 유닛+통합 195개 green (기존 186 + integration 9)
 
+## 후속 과제 (계획서 §11 — v1 이후)
+
+- [x] **파라미터 민감도 스윕 하니스** (`analysis/{override,sweep}` + `cli/run_sweep`)
+  - `apply_overrides(cfg, {"sizing.max_weight_pct": 5.0, ...})`: frozen Config 트리를 점 경로로 치환한 **새 Config** 반환(원본 불변). `dataclasses.replace`를 경로 각 단계 재귀 적용. 잘못된 경로/스칼라 하강은 `OverrideError`로 즉시 실패(오타=조용한 no-op 스윕 방지). 값은 기존 필드 타입에 맞춰 Enum·bool·float·tuple만 최소 보정
+  - `ParameterGrid.from_mapping({축: [값,...]})` → `itertools.product`로 결정론적 조합. `run_sweep`이 조합마다 오버라이드 적용한 새 엔진 실행·`compute_metrics` 수집(base cfg·source 불변, 지표 캐시가 config 의존이라 조합 간 미공유). `SweepResult.ranked(지표)`로 정렬, `write_sweep_csv`는 축 열+지표 열 조합당 1행(리포팅과 동일 `write_csv` utf-8-sig)
+  - CLI `run_sweep`: `--param 점경로=v1,v2`(반복) + `--grid YAML` 병합, `--sort` 지표 랭킹 콘솔표, `--out` CSV. 값은 int→float→bool→str 순 파싱. `run_portfolio.build_source` 재사용
+  - 유닛+통합 220개 green (기존 195 + unit 19: override 정확성·불변·타입보정·오류, 그리드 조합, 표 스키마 + integration 6: 조합수·결정론·민감도·오버라이드 무해성·CSV 스키마)
+  - **남은 후속**: 워크포워드/롤링 검증, 몬테카를로 트레이드 순서, API 데이터소스 교체, 펀더멘털·수급 통합, 생존편향 보정
+
 ## §12 결정사항 확정 로그
 
 계획서 §12의 질문을 확정할 때마다 여기에 날짜·결정·근거를 기록한다. (미확정은 계획서의 제안 기본값 사용)

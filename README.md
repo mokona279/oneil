@@ -12,14 +12,15 @@
 
 ## 현재 상태
 
-**Phase 0~8 완료** — 골격부터 통합·회귀·문서까지 전 Phase 구축, 유닛+통합 테스트 195개 green.
+**Phase 0~8 완료 + 파라미터 민감도 스윕 하니스** — 골격부터 통합·회귀·문서까지 전 Phase를
+구축하고, 계획서 §11 후속과제의 첫 항목(민감도 스윕)을 얹었다. 유닛+통합 테스트 220개 green.
 계획서(§8)의 v1 로드맵 전 구간이 끝났다.
 
 각 Phase의 상세 목표·산출 파일·테스트·"세션 시작 컨텍스트"는 계획서
 [`docs/backtest_plan.md`](docs/backtest_plan.md) §8에 있다. 진행 현황과 미결정 사항(§12 Q)
 확정 이력은 [`docs/PROGRESS.md`](docs/PROGRESS.md)에서 관리한다.
 
-**후속 과제**(구조는 v1에서 확보, 계획서 §11): 파라미터 민감도 스윕 하니스,
+**후속 과제**(구조는 v1에서 확보, 계획서 §11): ~~파라미터 민감도 스윕 하니스~~(구현 완료, ↓ 실행 예시),
 워크포워드/롤링 검증, API 데이터 소스 교체, 펀더멘털·수급 소스 통합, 생존편향 보정.
 
 ---
@@ -52,7 +53,8 @@ oneil/
 │  ├─ portfolio/  (Phase 5)    position_sizer / portfolio / risk_governor
 │  ├─ engine/     (Phase 6)    context / pipeline / engine (일별 이벤트 루프)
 │  ├─ reporting/  (Phase 7)    trade_log / equity_curve / metrics / event_list / report
-│  └─ cli/        (Phase 6)    run_single / run_portfolio
+│  ├─ analysis/   (후속 §11)   override(점경로 config 치환) / sweep(그리드 실행·CSV)
+│  └─ cli/        (Phase 6~)   run_single / run_portfolio / run_sweep
 └─ tests/
    ├─ fixtures/   synthetic.py  (합성 OHLCV 빌더)
    ├─ unit/       (모듈별 미러링)
@@ -103,6 +105,27 @@ PYTHONPATH=src "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" \
 `--out`을 주면 트레이드 로그·자본곡선·이벤트 CSV와 성과지표(`metrics.txt`/`.json`)를
 그 디렉토리에 쓴다(§9). 단일종목은 `run_single --symbol 005930 ...`. 데이터셋 상세는
 [`data_example/README.md`](data_example/README.md).
+
+### 파라미터 민감도 스윕 (계획서 §11 후속과제)
+
+규칙 수치가 전부 config로 외부화돼 있어, 축(config 점 경로)별 값 목록의 데카르트 곱으로
+백테스트를 반복 실행하고 조합별 성과지표를 랭킹 표·CSV로 낸다.
+
+```bash
+PYTHONPATH=src "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" \
+    -m oneil_bt.cli.run_sweep \
+    --price-dir data_example/prices \
+    --kospi data_example/kospi.csv --kosdaq data_example/kosdaq.csv \
+    --meta data_example/meta.csv \
+    --rules config/rules_v3-3.yaml --costs config/costs.yaml \
+    --start 2019-01-02 --end 2020-03-24 --cash 1e8 \
+    --param sizing.max_weight_pct=5,10,20 --param stop.atr_mult=1.5,2,2.5 \
+    --sort total_return_pct --out out/sweep.csv
+```
+
+축은 `--param <점경로>=<v1,v2,...>`(반복) 또는 `--grid <grid.yaml>`(`{점경로: [값,...]}`)로
+지정한다. 값은 숫자·`true/false`·Enum 문자열(예: `stop.method=atr2x,fixed_pct`)을 받는다.
+파이썬 API는 `oneil_bt.analysis`의 `run_sweep`/`ParameterGrid`/`apply_overrides`.
 
 ---
 
