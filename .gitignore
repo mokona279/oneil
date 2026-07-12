@@ -39,6 +39,7 @@ coverage.xml
 outputs/
 results/
 *.parquet
+out/
 
 # 대용량 실데이터 (data_example/의 소형 스모크 데이터는 예외적으로 커밋)
 # 루트 앵커(/) — src/oneil_bt/data/ 소스 패키지는 제외하지 않도록

@@ -180,6 +180,80 @@ class EventRecord:
     detail: dict
 
 
+# --------------------------------------------------------------------------- #
+# 진단(§11 후속) — 진입 퍼널·게이트 분해·현 베이스 단계. 모두 관찰용(체결/이벤트
+# 불변). 엔진이 run 중 채우고 리포팅이 CSV로 낸다. 골든 해시에는 포함하지 않는다.
+# --------------------------------------------------------------------------- #
+@dataclass
+class EntryFunnel:
+    """종목별 진입 퍼널 — 각 게이트를 순서대로 통과한 세션 수(잔존 카운트).
+
+    엔진이 실제 진입 판정 시점에 세므로 값이 곧 실제 결정과 일치한다(재현·비드리프트).
+    필드는 깔때기 순서: held/shopped(분모) → base_present → stage_ok → breakout(기회)
+    → 게이트별 통과 → gates_all_ok(후보) → entered(체결).
+    """
+
+    symbol: str
+    held: int = 0            # 보유중이라 신규진입 평가를 건너뛴 날
+    shopped: int = 0         # 신규진입을 평가한 날(미보유·거버너 정상)
+    base_present: int = 0    # 유효 베이스 존재
+    stage_ok: int = 0        # + 단계 ≤ max_stage
+    breakout: int = 0        # + 당일 피벗 돌파(= 진입 '기회'일)
+    gate_trend_ok: int = 0   # 기회일 중 트렌드템플릿 통과
+    gate_rs_ok: int = 0
+    gate_market_ok: int = 0
+    gate_quality_ok: int = 0
+    gates_all_ok: int = 0    # 전 게이트 통과(= 진입 후보)
+    entered: int = 0         # 실제 신규 체결
+
+
+@dataclass(frozen=True)
+class GateBreakdownRow:
+    """돌파(기회)일 1건의 게이트 개별 판정 + 베이스 스냅샷.
+
+    한 번의 진입 기회에서 어느 게이트가 막았는지 특정한다. `n_failed==1`은 파라미터
+    한 개만 풀면 잡히는 '니어미스'다.
+    """
+
+    date: date
+    symbol: str
+    stage: int
+    depth_pct: float
+    weeks_elapsed: float
+    pivot: float
+    trend_ok: bool
+    rs_ok: bool
+    market_ok: bool
+    overheat_ok: bool     # 과열 아님
+    atr_ok: bool
+    contraction_ok: bool
+    dryup_ok: bool
+    all_pass: bool
+    n_failed: int
+
+
+@dataclass(frozen=True)
+class BaseStageSnapshot:
+    """종료 시점 종목별 베이스 단계 스냅샷 + 유효 돌파 이력 요약.
+
+    `has_base=False`면 지금 성숙한 베이스가 없다는 뜻(수직상승·붕괴 중). 이때도
+    `last_breakout_stage`로 '다음 베이스가 쌓일 단계'를 가늠할 수 있다.
+    """
+
+    symbol: str
+    as_of: date
+    has_base: bool
+    stage: int | None
+    pivot: float | None
+    depth_pct: float | None
+    weeks_elapsed: float | None
+    tier: str | None
+    n_breakouts: int             # 전 기간 유효 돌파 수
+    max_stage_reached: int       # 이력 중 최고 단계
+    last_breakout_date: date | None
+    last_breakout_stage: int | None
+
+
 @dataclass
 class BacktestResult:
     """백테스트 산출물(원자료). Phase 7 리포팅 입력."""
@@ -191,6 +265,10 @@ class BacktestResult:
     equity_curve: list[DailyRecord] = field(default_factory=list)
     trades: list[TradeRecord] = field(default_factory=list)
     events: list[EventRecord] = field(default_factory=list)
+    # 진단(관찰용, 골든 해시 제외). 엔진이 record_diagnostics=True일 때만 채운다.
+    entry_funnel: dict[str, EntryFunnel] = field(default_factory=dict)
+    gate_breakdown: list[GateBreakdownRow] = field(default_factory=list)
+    base_stages: dict[str, BaseStageSnapshot] = field(default_factory=dict)
 
     @property
     def final_equity(self) -> float:

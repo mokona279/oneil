@@ -12,16 +12,17 @@
 
 ## 현재 상태
 
-**Phase 0~8 완료 + 파라미터 민감도 스윕 하니스** — 골격부터 통합·회귀·문서까지 전 Phase를
-구축하고, 계획서 §11 후속과제의 첫 항목(민감도 스윕)을 얹었다. 유닛+통합 테스트 220개 green.
-계획서(§8)의 v1 로드맵 전 구간이 끝났다.
+**Phase 0~8 완료 + 민감도 스윕 + 진입 진단** — 골격부터 통합·회귀·문서까지 전 Phase를
+구축하고, 계획서 §11 후속과제로 파라미터 민감도 스윕과 진입 진단(퍼널·게이트 분해·현
+베이스 단계)을 얹었다. 유닛+통합 테스트 261개 green. 계획서(§8)의 v1 로드맵 전 구간이 끝났다.
 
 각 Phase의 상세 목표·산출 파일·테스트·"세션 시작 컨텍스트"는 계획서
 [`docs/backtest_plan.md`](docs/backtest_plan.md) §8에 있다. 진행 현황과 미결정 사항(§12 Q)
 확정 이력은 [`docs/PROGRESS.md`](docs/PROGRESS.md)에서 관리한다.
 
-**후속 과제**(구조는 v1에서 확보, 계획서 §11): ~~파라미터 민감도 스윕 하니스~~(구현 완료, ↓ 실행 예시),
-워크포워드/롤링 검증, API 데이터 소스 교체, 펀더멘털·수급 소스 통합, 생존편향 보정.
+**후속 과제**(구조는 v1에서 확보, 계획서 §11): ~~파라미터 민감도 스윕 하니스~~·~~진입
+진단(퍼널·게이트·현 단계)~~(구현 완료, ↓ 사용 방법), 워크포워드/롤링 검증, API 데이터
+소스 교체, 펀더멘털·수급 소스 통합, 생존편향 보정.
 
 ---
 
@@ -91,45 +92,127 @@ C:\Users\mh.han\repos\daytrading\.venv\Scripts\python.exe
 
 `pyproject.toml`의 `pythonpath = ["src", "."]` 설정으로 (pytest는) 별도 설치 없이 `import` 가능하다.
 
-### 백테스트 실행 (소형 예제 데이터)
+### 백테스트 CLI
 
-`data_example/`에 통합 테스트용 소형 데이터셋이 있다(재현: `python data_example/generate.py`).
-CLI 직접 실행 시엔 `PYTHONPATH=src`를 지정한다:
+세 진입점(`run_single`·`run_portfolio`·`run_sweep`)은 같은 데이터·설정 인자를 공유하며,
+모듈로 실행하되 `PYTHONPATH=src`를 지정한다. 아래 예시는 실데이터(`data/…`, ↓ '실데이터
+수집' 후) 기준이다. 데이터 준비 전이라면 `data_example/` 소형 데이터로 동일하게 돌릴 수
+있다(`--price-dir data_example/prices … --start 2019-01-02 --end 2020-03-24`, 재현:
+`python data_example/generate.py`, 상세 [`data_example/README.md`](data_example/README.md)).
+
+**공통 인자** (세 CLI 공통)
+
+| 인자 | 필수 | 설명 |
+|---|---|---|
+| `--price-dir` | ✓ | 종목 일봉 CSV 디렉토리(`{symbol}.csv`) |
+| `--meta` | ✓ | `meta.csv` (symbol·name·market·listing_date·shares_out) |
+| `--kospi` | ✓ | 코스피 지수 CSV — 거래일 캘린더의 기준 |
+| `--kosdaq` | | 코스닥 지수 CSV(코스닥 종목이 있으면 필요) |
+| `--rules` | ✓ | 규칙 수치 YAML(`config/rules_v3-3.yaml`) |
+| `--costs` | ✓ | 비용 YAML(`config/costs.yaml`) |
+| `--start`·`--end` | ✓ | 백테스트 구간 `YYYY-MM-DD`. 지표 워밍업(200MA+52주) 위해 **데이터**는 15개월 더 앞부터 있어야 |
+| `--cash` | | 초기자본(기본 `1e8`) |
+| `--out` | | 리포트 출력 디렉토리(생략 시 콘솔 요약만) |
+
+#### 단일종목 — `oneil_bt.cli.run_single`
+
+한 종목만 엔진에 태워 판정·트레이드를 본다. 공통 인자 + **`--symbol`**(하나).
+
+```bash
+PYTHONPATH=src "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" \
+    -m oneil_bt.cli.run_single --symbol 000660 \
+    --price-dir data/prices --kospi data/kospi.csv --kosdaq data/kosdaq.csv \
+    --meta data/meta.csv --rules config/rules_v3-3.yaml --costs config/costs.yaml \
+    --start 2024-01-01 --end 2026-07-12 --cash 1e8 --out out/hynix
+```
+
+#### 포트폴리오 — `oneil_bt.cli.run_portfolio`
+
+유니버스를 8종목/현금 규칙(§1)으로 굴린다. **`--symbols`**(쉼표구분)로 대상을 좁히고,
+생략하면 `--price-dir`의 전 종목이 유니버스가 된다.
 
 ```bash
 PYTHONPATH=src "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" \
     -m oneil_bt.cli.run_portfolio \
-    --price-dir data_example/prices \
-    --kospi data_example/kospi.csv --kosdaq data_example/kosdaq.csv \
-    --meta data_example/meta.csv \
-    --rules config/rules_v3-3.yaml --costs config/costs.yaml \
-    --start 2019-01-02 --end 2020-03-24 --cash 1e8 --out out/example
+    --symbols 005930,000660,271560,319660 \
+    --price-dir data/prices --kospi data/kospi.csv --kosdaq data/kosdaq.csv \
+    --meta data/meta.csv --rules config/rules_v3-3.yaml --costs config/costs.yaml \
+    --start 2024-01-01 --end 2026-07-12 --cash 1e8 --out out/portfolio
 ```
 
-`--out`을 주면 트레이드 로그·자본곡선·이벤트 CSV와 성과지표(`metrics.txt`/`.json`)를
-그 디렉토리에 쓴다(§9). 단일종목은 `run_single --symbol 005930 ...`. 데이터셋 상세는
-[`data_example/README.md`](data_example/README.md).
-
-### 파라미터 민감도 스윕 (계획서 §11 후속과제)
+#### 파라미터 민감도 스윕 — `oneil_bt.cli.run_sweep`
 
 규칙 수치가 전부 config로 외부화돼 있어, 축(config 점 경로)별 값 목록의 데카르트 곱으로
 백테스트를 반복 실행하고 조합별 성과지표를 랭킹 표·CSV로 낸다.
 
 ```bash
 PYTHONPATH=src "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" \
-    -m oneil_bt.cli.run_sweep \
-    --price-dir data_example/prices \
-    --kospi data_example/kospi.csv --kosdaq data_example/kosdaq.csv \
-    --meta data_example/meta.csv \
-    --rules config/rules_v3-3.yaml --costs config/costs.yaml \
-    --start 2019-01-02 --end 2020-03-24 --cash 1e8 \
-    --param sizing.max_weight_pct=5,10,20 --param stop.atr_mult=1.5,2,2.5 \
-    --sort total_return_pct --out out/sweep.csv
+    -m oneil_bt.cli.run_sweep --symbols 000660 \
+    --price-dir data/prices --kospi data/kospi.csv --kosdaq data/kosdaq.csv \
+    --meta data/meta.csv --rules config/rules_v3-3.yaml --costs config/costs.yaml \
+    --start 2024-01-01 --end 2026-07-12 --cash 1e8 \
+    --param base.stage.max_stage=3,4,5 --param quality.contraction_le_pivot_pct=10,15,20 \
+    --sort n_trades --out out/sweep.csv
 ```
 
-축은 `--param <점경로>=<v1,v2,...>`(반복) 또는 `--grid <grid.yaml>`(`{점경로: [값,...]}`)로
-지정한다. 값은 숫자·`true/false`·Enum 문자열(예: `stop.method=atr2x,fixed_pct`)을 받는다.
-파이썬 API는 `oneil_bt.analysis`의 `run_sweep`/`ParameterGrid`/`apply_overrides`.
+- **축 지정**: `--param <점경로>=<v1,v2,...>`(반복) 또는 `--grid <grid.yaml>`(`{점경로: [값,...]}`).
+  값은 숫자·`true/false`·Enum 문자열(예: `stop.method=atr2x,fixed_pct`). 점 경로는 YAML 키가
+  아니라 **Config DTO** 기준이다(예: `trend.high_52w_within_pct`, `base.stage.max_stage`).
+- **`--sort`**: 랭킹 지표(기본 `total_return_pct`). `n_trades`·`mdd_pct`·`expectancy_r` 등
+  아래 지표 열 이름을 쓴다. `--asc`면 오름차순.
+- 파이썬 API는 `oneil_bt.analysis`의 `run_sweep`/`ParameterGrid`/`apply_overrides`.
+
+### 출력물 (`--out`)
+
+`--out`을 준 백테스트(`run_single`/`run_portfolio`)는 그 디렉토리에 아래를 쓴다. 성과 요약
+(`metrics`)·원자료(`trades`/`equity_curve`/`events`)에 더해, 규칙이 종목을 **왜 사고/안
+샀는지** 사후 감사용 **진단 CSV 3종**(§11)이 함께 나온다 — 엔진이 실제 진입 판정 시점에
+기록해 이벤트/체결과 100% 일치한다(끄려면 엔진 `record_diagnostics=False`).
+
+| 파일 | 내용 |
+|---|---|
+| `trades.csv` | 트레이드 로그 — 진입/청산/수량/손익/R배수/보유일 |
+| `equity_curve.csv` | 일별 자본곡선 — 현금·평가액·노출·시장상태 |
+| `events.csv` | 육안검증 이벤트 — 돌파후보·진입·피라미딩·청산·추격스킵·거래량실패 |
+| `metrics.txt` / `.json` | 성과지표 — 수익률·CAGR·MDD·승률·손익비·기댓값·거래비용 등 |
+| `entry_funnel.csv` | **진단** 종목별 진입 퍼널 — 유효베이스→단계→돌파(기회)→게이트별 통과→체결까지 각 단계 잔존 세션 수. "왜 안 샀나"를 한 줄로 |
+| `gate_breakdown.csv` | **진단** 돌파(기회)일마다 게이트 개별 판정(트렌드·RS·시장·과열·ATR·수축·드라이업). `n_failed=1`은 파라미터 하나만 풀면 잡히는 니어미스 |
+| `base_stage.csv` | **진단** 종료 시점 종목별 **현 베이스 단계**·피벗·깊이 + 유효 돌파 이력(최고 단계·마지막 돌파) |
+
+진단 산출 로직은 [`reporting/diagnostics.py`](src/oneil_bt/reporting/diagnostics.py). 스윕은
+조합별 성과지표를 `--out` CSV 한 파일로만 낸다(위 진단 3종은 스윕 산출엔 없음).
+
+### 실전 워크플로우 (실데이터)
+
+수집 → 포트폴리오 백테스트 → 안 잡힌 종목 심화 → 병목 파라미터 스윕의 전형적 흐름:
+
+```bash
+PY="C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe"
+
+# 1) 수집 — 백테스트 시작(2024-01)보다 15개월 앞부터(워밍업). ↓ '실데이터 수집' 참고
+PYTHONPATH=src "$PY" -m oneil_fetch --symbols 005930,000660,271560,319660 \
+    --start 2022-10-01 --end 2026-07-12 --out data --env-file C:/path/to/.env
+
+# 2) 포트폴리오 백테스트 (2024-01 ~ 현재)
+PYTHONPATH=src "$PY" -m oneil_bt.cli.run_portfolio --symbols 005930,000660,271560,319660 \
+    --price-dir data/prices --kospi data/kospi.csv --kosdaq data/kosdaq.csv \
+    --meta data/meta.csv --rules config/rules_v3-3.yaml --costs config/costs.yaml \
+    --start 2024-01-01 --end 2026-07-12 --cash 1e8 --out out/portfolio
+
+# 3) 안 잡힌 종목 심화 — 단일 백테스트 후 out/hynix/entry_funnel.csv·gate_breakdown.csv로 병목 확인
+PYTHONPATH=src "$PY" -m oneil_bt.cli.run_single --symbol 000660 \
+    --price-dir data/prices --kospi data/kospi.csv --kosdaq data/kosdaq.csv \
+    --meta data/meta.csv --rules config/rules_v3-3.yaml --costs config/costs.yaml \
+    --start 2024-01-01 --end 2026-07-12 --out out/hynix
+
+# 4) 병목 파라미터 스윕 — gate_breakdown의 니어미스(n_failed=1) 축을 풀어 재실행
+PYTHONPATH=src "$PY" -m oneil_bt.cli.run_sweep --symbols 000660 \
+    --price-dir data/prices --kospi data/kospi.csv --kosdaq data/kosdaq.csv \
+    --meta data/meta.csv --rules config/rules_v3-3.yaml --costs config/costs.yaml \
+    --start 2024-01-01 --end 2026-07-12 \
+    --param base.stage.max_stage=3,4,5 --param quality.contraction_le_pivot_pct=10,15,20 \
+    --sort n_trades --out out/sweep.csv
+```
 
 ### 실데이터 수집 (`oneil_fetch`)
 
