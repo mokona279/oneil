@@ -8,10 +8,20 @@
 - `apply_overrides` — base Config의 지정 필드만 갈아끼운 새 Config 반환(원본 불변).
 - `ParameterGrid` / `run_sweep` / `SweepResult` — 그리드 실행과 결과.
 - `write_sweep_csv` — 조합별 1행 CSV(재현성 있는 utf-8-sig).
+- `CaptureCriteria` / `capture_record` / `build_capture_set` — 캡처 회귀 세트(Q8).
+- `build_capture_report` / `capture_stats` — 세트 × 백테스트 산출물 집계(캡처율).
 """
 
 from __future__ import annotations
 
+from .capture import CaptureCriteria, CaptureRecord, build_capture_set, capture_record
+from .capture_report import (
+    build_capture_report,
+    build_capture_report_from_dir,
+    capture_stats,
+    format_capture_summary,
+    write_capture_report,
+)
 from .override import OverrideError, apply_overrides
 from .sweep import (
     ParameterGrid,
@@ -24,13 +34,22 @@ from .sweep import (
 )
 
 __all__ = [
+    "CaptureCriteria",
+    "CaptureRecord",
     "OverrideError",
     "ParameterGrid",
+    "build_capture_set",
+    "capture_record",
     "SweepResult",
     "SweepRow",
     "apply_overrides",
+    "build_capture_report",
+    "build_capture_report_from_dir",
+    "capture_stats",
+    "format_capture_summary",
     "format_sweep",
     "run_sweep",
     "sweep_table",
+    "write_capture_report",
     "write_sweep_csv",
 ]

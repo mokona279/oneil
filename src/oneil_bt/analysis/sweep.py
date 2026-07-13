@@ -16,7 +16,7 @@ CSV는 축 열 + 지표 열로 조합당 1행. 리포팅과 동일한 `write_csv
 from __future__ import annotations
 
 import itertools
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
@@ -28,6 +28,7 @@ from ..domain.config import Config
 from ..engine.engine import BacktestEngine
 from ..reporting.metrics import PerformanceMetrics, compute_metrics
 from ..reporting.writer import write_csv
+from .capture_report import capture_stats
 from .override import apply_overrides
 
 
@@ -72,12 +73,18 @@ class ParameterGrid:
 # --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class SweepRow:
-    """한 파라미터 조합의 결과 — 오버라이드 + 성과지표 + 엔진 레벨 부가값."""
+    """한 파라미터 조합의 결과 — 오버라이드 + 성과지표 + 엔진 레벨 부가값.
+
+    capture_* 는 캡처 세트(개선계획 §3.3)를 넘긴 스윕에서만 채워진다(없으면 None →
+    CSV에서 빈 칸). 캡처율로 정렬하려면 세트를 넘긴 스윕이어야 한다.
+    """
 
     overrides: dict[str, Any]
     metrics: PerformanceMetrics
     final_equity: float
     max_exposure_pct: float
+    capture_rate: float | None = None
+    capture_sum_r: float | None = None
 
 
 @dataclass(frozen=True)
@@ -109,6 +116,8 @@ _METRIC_COLUMNS: tuple[tuple[str, Callable[[SweepRow], Any]], ...] = (
     ("n_losses", lambda r: r.metrics.n_losses),
     ("n_stop", lambda r: r.metrics.exit_breakdown.get("stop", 0)),
     ("final_equity", lambda r: r.final_equity),
+    ("capture_rate", lambda r: "" if r.capture_rate is None else r.capture_rate),
+    ("capture_sum_r", lambda r: "" if r.capture_sum_r is None else r.capture_sum_r),
 )
 
 _METRIC_GETTERS: dict[str, Callable[[SweepRow], Any]] = dict(_METRIC_COLUMNS)
@@ -135,8 +144,13 @@ def run_sweep(
     *,
     initial_cash: float = 1.0e8,
     symbols: list[str] | None = None,
+    capture_symbols: Collection[str] | None = None,
 ) -> SweepResult:
-    """그리드의 모든 조합으로 백테스트를 돌려 조합별 성과지표를 수집한다."""
+    """그리드의 모든 조합으로 백테스트를 돌려 조합별 성과지표를 수집한다.
+
+    capture_symbols(캡처 세트, 개선계획 §3.3)를 주면 조합마다 캡처율·캡처 합산 R을
+    trades만으로 계산해 함께 담는다(진단 기록 불필요).
+    """
     rows: list[SweepRow] = []
     for overrides in grid.combinations():
         cfg = apply_overrides(base_cfg, overrides)
@@ -147,12 +161,21 @@ def run_sweep(
         max_expo = max(
             (rec.exposure_pct for rec in result.equity_curve), default=0.0
         )
+        capture_rate: float | None = None
+        capture_sum_r: float | None = None
+        if capture_symbols is not None:
+            capture_rate, capture_sum_r = capture_stats(
+                ((t.closed.symbol, t.closed.pnl_r) for t in result.trades),
+                capture_symbols,
+            )
         rows.append(
             SweepRow(
                 overrides=dict(overrides),
                 metrics=metrics,
                 final_equity=result.final_equity,
                 max_exposure_pct=max_expo,
+                capture_rate=capture_rate,
+                capture_sum_r=capture_sum_r,
             )
         )
     return SweepResult(axes=grid.names, rows=tuple(rows))
