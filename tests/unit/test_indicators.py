@@ -236,9 +236,10 @@ def test_ma200_rising_alt_lookback_or(cfg: Config) -> None:
     index = _frame([100.0] * len(closes), symbol="KOSPI")
     d = stock.df.index[-1].date()
 
-    assert IndicatorSet(stock, index, cfg).ma200_rising(d) is False  # 현행(20일 단일)
-
     from oneil_bt.analysis import apply_overrides
+
+    cfg_single = apply_overrides(cfg, {"trend.ma200_rising_lookback_alt": None})
+    assert IndicatorSet(stock, index, cfg_single).ma200_rising(d) is False  # 20일 단일(v3-3)
 
     cfg_alt = apply_overrides(cfg, {"trend.ma200_rising_lookback_alt": 5})
     assert IndicatorSet(stock, index, cfg_alt).ma200_rising(d) is True

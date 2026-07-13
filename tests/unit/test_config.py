@@ -21,15 +21,20 @@ def cfg() -> Config:
 
 
 def test_version_tag(cfg: Config) -> None:
-    assert cfg.rulebook_version == "v3-3"
+    assert cfg.rulebook_version == "v3-4"  # v3-3 + P1(R1·R2) 승인분
     assert cfg.calendar_source == "index"
 
 
 def test_trend_section(cfg: Config) -> None:
     assert cfg.trend.above_ma == (150, 200)
     assert cfg.trend.low_52w_gain_min_pct == 25.0
-    assert cfg.trend.high_52w_within_pct == 15.0
+    assert cfg.trend.high_52w_within_pct == 25.0  # R2b(Q4) P1 승인
+    assert cfg.trend.ma200_rising_lookback_alt == 5  # R2a(Q3b) P1 승인
     assert cfg.trend.turnover_20d_min_krw == 1.0e10
+
+
+def test_quality_section_p1(cfg: Config) -> None:
+    assert cfg.quality.contraction_atr_mult == 5.0  # R1(Q1b) k=5 P1 승인
 
 
 def test_base_tiers_sorted_and_typed(cfg: Config) -> None:
@@ -50,9 +55,23 @@ def test_entry_and_stop(cfg: Config) -> None:
 def test_nullable_fields(cfg: Config) -> None:
     assert cfg.overheating.swing_min_count is None
     assert cfg.sizing.min_weight_pct is None
-    # P1 신규 키 — null이면 현행 동치(R1 하이브리드·R2a 보조 룩백 꺼짐).
-    assert cfg.quality.contraction_atr_mult is None
-    assert cfg.trend.ma200_rising_lookback_alt is None
+
+
+def test_p1_keys_omitted_default_to_none() -> None:
+    # P1 신규 키는 옵셔널 — YAML에서 생략하면 None(=v3-3 현행 동치)으로 파싱된다.
+    from oneil_bt.domain.config import QualityCfg, TrendCfg
+
+    trend = TrendCfg.from_dict(dict(
+        above_ma=[150, 200], ma150_gt_ma200=True, ma200_rising_lookback=20,
+        ma50_gt_ma150=True, low_52w_gain_min_pct=25, high_52w_within_pct=15,
+        turnover_20d_min_krw=1.0e10,
+    ))
+    assert trend.ma200_rising_lookback_alt is None
+    quality = QualityCfg.from_dict(dict(
+        atr_le_pivot_pct=10, contraction_lookback=10,
+        contraction_le_pivot_pct=10, dryup_lookback=10,
+    ))
+    assert quality.contraction_atr_mult is None
 
 
 def test_fill_derived(cfg: Config) -> None:

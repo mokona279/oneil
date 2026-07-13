@@ -135,9 +135,12 @@ def test_contraction_boundary_pass(cfg: Config) -> None:
 
 
 def test_contraction_gate_blocks_wide_range(cfg: Config) -> None:
-    # 레인지 = 96 - 85 = 11 > 10 → 수축 실패.
+    # 절대 기준(v3-3 동치: k=null)에서 레인지 = 96 - 85 = 11 > 10 → 수축 실패.
+    from oneil_bt.analysis import apply_overrides
+
     frame, dates, base = _build(recent_hi=96.0, recent_lo=85.0)
-    q = _check(cfg, frame, dates)
+    cfg_abs = apply_overrides(cfg, {"quality.contraction_atr_mult": None})
+    q = _check(cfg_abs, frame, dates)
     res = q.passes(dates[BREAKOUT_POS], base)
     assert res.contraction_ok is False
     assert res.passed is False

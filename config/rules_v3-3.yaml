@@ -1,18 +1,21 @@
-# 주도주 추세추종 매매규칙서 백테스트 — 규칙 파라미터 (단일 진실 원천: oneil_strategy.md v3-3)
-# 계획서 §5 참조. 코드 내 수치 하드코딩 금지, 모든 규칙 수치는 여기서 외부화한다.
+# 주도주 추세추종 매매규칙서 백테스트 — 규칙 파라미터 (단일 진실 원천: oneil_strategy.md v3-3
+# + 개선계획 P1 승인분 R1·R2). 계획서 §5 참조. 코드 내 수치 하드코딩 금지.
 # 범위 표기(예: +25~30%)는 계획서 §12 결정 질문에 따라 단일값을 채택했다.
+# v3-4 = v3-3 + P1(R1 수축 k×ATR 하이브리드 k=5, R2a 200MA 5·20일 OR, R2b 밴드 25%)
+# — 2026-07-14 트레이드오프 표 사용자 승인(plan/p1_gates.md). 베이스라인 재현은 이
+# 세 키를 null/null/15로 되돌리면 v3-3과 비트 동일.
 
-rulebook_version: "v3-3"          # 재현성 태그
+rulebook_version: "v3-4"          # 재현성 태그
 calendar_source: index            # 거래일 = 지수 CSV 날짜 기준
 
 trend_template:                   # §3 0단계 — 트렌드 템플릿 7조건 (AND)
   above_ma: [150, 200]            # 주가 > 150MA & 200MA
   ma150_gt_ma200: true            # 150MA > 200MA
   ma200_rising_lookback: 20       # "200MA 1개월 이상 상승" 정의 (Q6)
-  ma200_rising_lookback_alt: null # R2a(개선계획 Q3): 보조 룩백 OR (예: 5) — null이면 현행 단일 판정
+  ma200_rising_lookback_alt: 5    # R2a(개선계획 Q3b): 5·20일 룩백 OR — P1 승인(2026-07-14)
   ma50_gt_ma150: true             # 50MA > 150MA
   low_52w_gain_min_pct: 25        # 52주 저가 대비 +25% 이상 (Q6: 25 채택)
-  high_52w_within_pct: 15         # 52주 고가 -15% 이내
+  high_52w_within_pct: 25         # 52주 고가 -25% 이내 — R2b(Q4) 미너비니 원전 환원, P1 승인
   turnover_20d_min_krw: 1.0e10    # 20일 평균 거래대금 >= 100억
 
 overheating:                      # §3 과열 제외 / §5 품질1
@@ -41,7 +44,7 @@ quality:                          # §5 품질요건 (전부 충족)
   atr_le_pivot_pct: 10            # 2*ATR <= 피벗*10%
   contraction_lookback: 10        # 직전 10일 레인지 <= 피벗*10%
   contraction_le_pivot_pct: 10
-  contraction_atr_mult: null      # R1(개선계획 Q1b): 임계 = max(피벗%, k×ATR) — null이면 현행 절대 기준
+  contraction_atr_mult: 5         # R1(개선계획 Q1b): 임계 = max(피벗%, k×ATR), k=5 — P1 스윕 플래토 중앙, 승인(2026-07-14)
   dryup_lookback: 10              # 직전 10일 평균거래량 < 베이스 일평균
 
 entry:                            # §4 매수
