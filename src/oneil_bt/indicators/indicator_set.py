@@ -84,10 +84,17 @@ class IndicatorSet:
         self._rise_lookback = cfg.trend.ma200_rising_lookback
         # NaN 비교는 False → 이력 부족 구간은 자동으로 "상승 아님"이 된다.
         self._ma200_rising = self.ma200 > self.ma200.shift(self._rise_lookback)
+        # R2a(Q3): 보조 룩백 OR — 장기 횡보 끝의 첫 돌파에서 긴 룩백의 계단 후행 보정.
+        alt = cfg.trend.ma200_rising_lookback_alt
+        if alt is not None:
+            self._ma200_rising = self._ma200_rising | (
+                self.ma200 > self.ma200.shift(int(alt))
+            )
 
     def ma200_rising(self, d: date) -> bool:
         """200MA[d] > 200MA[d-rise_lookback]. 이력 부족·데이터 없음이면 False.
 
+        보조 룩백(ma200_rising_lookback_alt)이 설정되면 둘 중 하나만 충족해도 상승(OR).
         d가 거래일이 아니면 d 이하 최근 거래일 기준으로 판정한다(as-of).
         """
         ts = pd.Timestamp(d).normalize()

@@ -31,15 +31,22 @@ from ..analysis import (
     run_sweep,
     write_sweep_csv,
 )
+from ..analysis.capture_report import load_capture_symbols
 from ..domain.config import Config
 from ..domain.enums import Market
 from .run_portfolio import build_source
 
 
 def _parse_scalar(token: str) -> Any:
-    """CLI 토큰을 int→float→bool→str 순으로 가장 좁은 타입으로 파싱한다."""
+    """CLI 토큰을 null→int→float→bool→str 순으로 가장 좁은 타입으로 파싱한다.
+
+    'null'/'none'은 None — 옵셔널 키(예: quality.contraction_atr_mult)의 '끔' 상태를
+    스윕 축에 포함시키기 위해 필요하다.
+    """
     t = token.strip()
     low = t.lower()
+    if low in ("null", "none"):
+        return None
     if low in ("true", "false"):
         return low == "true"
     try:
@@ -110,6 +117,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--grid", default=None, help="{점경로: [값,...]} YAML 파일")
     parser.add_argument(
+        "--capture-set", default=None,
+        help="capture_set.csv 경로 — 주면 조합마다 캡처율·캡처 합산 R을 계산한다",
+    )
+    parser.add_argument(
+        "--capture-tier", type=float, default=4.0,
+        help="캡처 세트 배수 티어 하한(기본 4.0 — Q8(b): max_multiple≥4 & turnover_ok)",
+    )
+    parser.add_argument(
         "--sort", default="total_return_pct", help="랭킹 정렬 지표(기본 총수익률)",
     )
     parser.add_argument(
@@ -127,15 +142,29 @@ def main(argv: list[str] | None = None) -> int:
     cfg = Config.load(args.rules, args.costs)
     symbols = args.symbols.split(",") if args.symbols else None
 
+    capture_symbols = None
+    if args.capture_set:
+        capture_symbols = load_capture_symbols(
+            args.capture_set, min_multiple=args.capture_tier
+        )
+        print(f"캡처 세트: {len(capture_symbols)}종목 "
+              f"(max_multiple ≥ {args.capture_tier:g} & turnover_ok)")
+
     n_combos = len(grid)
     print(f"스윕 축 {len(grid.names)}개 → 조합 {n_combos}개 실행 중...\n")
     result = run_sweep(
         source, cfg, grid,
         date.fromisoformat(args.start), date.fromisoformat(args.end),
         initial_cash=args.cash, symbols=symbols,
+        capture_symbols=capture_symbols,
     )
 
-    print(format_sweep(result, sort_key=args.sort, reverse=not args.asc))
+    columns = ["total_return_pct", "cagr_pct", "mdd_pct",
+               "win_rate_pct", "expectancy_r", "n_trades"]
+    if capture_symbols is not None:
+        columns = ["capture_rate", "capture_sum_r"] + columns
+    print(format_sweep(result, sort_key=args.sort, reverse=not args.asc,
+                       columns=columns))
     if args.out:
         write_sweep_csv(result, args.out)
         print(f"\n스윕 CSV 저장: {args.out}")

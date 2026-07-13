@@ -70,6 +70,21 @@ def capture_stats(
     return len(entered) / len(symbols) * 100.0, sum_r
 
 
+def load_capture_symbols(
+    capture_csv: Path | str, *, min_multiple: float | None = None
+) -> list[str]:
+    """capture_set.csv에서 스윕용 캡처 심볼 목록 (turnover_ok 필수, 배수 티어 하한 선택).
+
+    Q8(b) 확정: P1~ 캘리브레이션의 1차 정렬은 `max_multiple ≥ 4 & turnover_ok`
+    부분집합의 캡처율 — 이 부분집합을 `run_sweep(capture_symbols=...)`로 넘긴다.
+    """
+    df = pd.read_csv(capture_csv, dtype={"symbol": str})
+    core = df[df["turnover_ok"]]
+    if min_multiple is not None:
+        core = core[core["max_multiple"] >= min_multiple]
+    return core["symbol"].tolist()
+
+
 def build_capture_report(
     capture_df: pd.DataFrame,
     trades_df: pd.DataFrame,

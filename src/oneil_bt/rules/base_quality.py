@@ -80,7 +80,7 @@ class BaseQualityCheck:
         return QualityResult(
             not_overheated=not self.overheating.excluded(prev_date, has_base=True),
             atr_ok=self._atr_ok(prev_date, base.pivot),
-            contraction_ok=self._contraction_ok(pos, base.pivot),
+            contraction_ok=self._contraction_ok(pos, prev_date, base.pivot),
             dryup_ok=self._dryup_ok(pos, base.start),
         )
 
@@ -94,8 +94,13 @@ class BaseQualityCheck:
             return False
         return 2.0 * atr <= pivot * self.qcfg.atr_le_pivot_pct / 100.0
 
-    def _contraction_ok(self, pos: int, pivot: float) -> bool:
-        """직전 N거래일 장중 고저 범위 ≤ 피벗 × contraction_le_pivot_pct%."""
+    def _contraction_ok(self, pos: int, prev_date: date, pivot: float) -> bool:
+        """직전 N거래일 장중 고저 범위 ≤ 임계.
+
+        임계는 기본 피벗 × contraction_le_pivot_pct%. `contraction_atr_mult`(R1, Q1b)가
+        설정되면 max(피벗%, k×ATR(d-1)) 하이브리드 — 저변동 종목은 현행과 동일하고,
+        고변동 주도주만 자기 변동성만큼 완화된다. ATR 미확정이면 현행 기준으로 폴백.
+        """
         lookback = self.qcfg.contraction_lookback
         lo = pos - lookback + 1
         if lo < 0 or pivot <= 0:
@@ -105,7 +110,13 @@ class BaseQualityCheck:
         rng = window_high - window_low
         if math.isnan(rng):
             return False
-        return bool(rng <= pivot * self.qcfg.contraction_le_pivot_pct / 100.0)
+        threshold = pivot * self.qcfg.contraction_le_pivot_pct / 100.0
+        k = self.qcfg.contraction_atr_mult
+        if k is not None:
+            atr = asof_value(self.ind.atr14, prev_date)
+            if atr is not None:
+                threshold = max(threshold, k * atr)
+        return bool(rng <= threshold)
 
     def _dryup_ok(self, pos: int, start: date) -> bool:
         """직전 N거래일 평균 거래량 < 베이스 전체([start, d-1]) 일평균 거래량."""

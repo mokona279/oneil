@@ -20,6 +20,7 @@ from .capture_report import (
     build_capture_report_from_dir,
     capture_stats,
     format_capture_summary,
+    load_capture_symbols,
     write_capture_report,
 )
 from .override import OverrideError, apply_overrides
@@ -48,6 +49,7 @@ __all__ = [
     "capture_stats",
     "format_capture_summary",
     "format_sweep",
+    "load_capture_symbols",
     "run_sweep",
     "sweep_table",
     "write_capture_report",

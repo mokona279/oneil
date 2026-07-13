@@ -228,6 +228,22 @@ def test_ma200_rising_false_when_insufficient_history(cfg: Config) -> None:
     assert iset.ma200_rising(early) is False
 
 
+def test_ma200_rising_alt_lookback_or(cfg: Config) -> None:
+    # R2a(Q3): 장기 하락 후 완만한 턴 — 200MA가 일간으로는 상승 전환했지만 20일
+    # 룩백은 계단 후행으로 아직 하락. 보조 룩백(5일) OR 설정 시에만 상승 판정.
+    closes = [400.0 - t for t in range(260)] + [141.0 + 12.0 * (t + 1) for t in range(20)]
+    stock = _frame(closes)
+    index = _frame([100.0] * len(closes), symbol="KOSPI")
+    d = stock.df.index[-1].date()
+
+    assert IndicatorSet(stock, index, cfg).ma200_rising(d) is False  # 현행(20일 단일)
+
+    from oneil_bt.analysis import apply_overrides
+
+    cfg_alt = apply_overrides(cfg, {"trend.ma200_rising_lookback_alt": 5})
+    assert IndicatorSet(stock, index, cfg_alt).ma200_rising(d) is True
+
+
 def test_indicator_set_asof_helper(cfg: Config) -> None:
     iset = _long_set(cfg)
     d = iset.index[-1].date()

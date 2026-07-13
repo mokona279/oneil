@@ -144,6 +144,44 @@ def test_contraction_gate_blocks_wide_range(cfg: Config) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# 요건 3 — R1(Q1b) 하이브리드: 임계 = max(피벗%, k×ATR)
+# 이 프레임의 ATR(14)@d-1 = (4×4 + 11 + 9×11)/14 = 9.0 (직전 10일 레인지 11일 때)
+# --------------------------------------------------------------------------- #
+def test_contraction_hybrid_relaxes_for_high_volatility(cfg: Config) -> None:
+    # 절대 기준은 레인지 11 > 10 → 실패. k=2 → 임계 max(10, 2×9)=18 → 통과.
+    from oneil_bt.analysis import apply_overrides
+
+    frame, dates, base = _build(recent_hi=96.0, recent_lo=85.0)
+    cfg_k = apply_overrides(cfg, {"quality.contraction_atr_mult": 2.0})
+    q = _check(cfg_k, frame, dates)
+    res = q.passes(dates[BREAKOUT_POS], base)
+    assert res.contraction_ok is True
+
+
+def test_contraction_hybrid_small_k_still_blocks(cfg: Config) -> None:
+    # k=1 → 임계 max(10, 9)=10 < 레인지 11 → 여전히 차단(완화 폭은 k에 비례).
+    from oneil_bt.analysis import apply_overrides
+
+    frame, dates, base = _build(recent_hi=96.0, recent_lo=85.0)
+    cfg_k = apply_overrides(cfg, {"quality.contraction_atr_mult": 1.0})
+    q = _check(cfg_k, frame, dates)
+    res = q.passes(dates[BREAKOUT_POS], base)
+    assert res.contraction_ok is False
+
+
+def test_contraction_hybrid_keeps_absolute_floor(cfg: Config) -> None:
+    # 저변동: k×ATR가 절대 기준(10)보다 작아도 max() 바닥으로 현행 유지 —
+    # 경계 레인지 10(= 96-86)은 k 설정과 무관하게 통과.
+    from oneil_bt.analysis import apply_overrides
+
+    frame, dates, base = _build(recent_hi=96.0, recent_lo=86.0)
+    cfg_k = apply_overrides(cfg, {"quality.contraction_atr_mult": 1.0})
+    q = _check(cfg_k, frame, dates)
+    res = q.passes(dates[BREAKOUT_POS], base)
+    assert res.contraction_ok is True
+
+
+# --------------------------------------------------------------------------- #
 # 요건 4 — 드라이업(직전 10거래일 평균거래량 < 베이스 전체 일평균)
 # --------------------------------------------------------------------------- #
 def test_dryup_gate_blocks_rising_volume(cfg: Config) -> None:

@@ -199,3 +199,18 @@ def test_sweep_result_ranked_orders_by_metric() -> None:
     ranked = result.ranked("total_return_pct", reverse=True)
     assert ranked[0].overrides["a"] == 2  # 99.0 이 먼저
     assert ranked[1].overrides["a"] == 1
+
+
+# --------------------------------------------------------------------------- #
+# CLI 스칼라 파싱 — null/none은 옵셔널 키의 '끔' 상태(P1: contraction_atr_mult 등)
+# --------------------------------------------------------------------------- #
+def test_cli_parse_scalar_null_and_types() -> None:
+    from oneil_bt.cli.run_sweep import _parse_scalar, parse_param_specs
+
+    assert _parse_scalar("null") is None
+    assert _parse_scalar("None") is None
+    assert _parse_scalar("4") == 4
+    assert _parse_scalar("4.5") == 4.5
+    assert _parse_scalar("true") is True
+    axes = parse_param_specs(["quality.contraction_atr_mult=null,4,5,6"])
+    assert axes == {"quality.contraction_atr_mult": [None, 4, 5, 6]}

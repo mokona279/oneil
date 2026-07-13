@@ -40,6 +40,7 @@ class TrendCfg:
     above_ma: tuple[int, ...]
     ma150_gt_ma200: bool
     ma200_rising_lookback: int
+    ma200_rising_lookback_alt: int | None  # R2a(Q3): 보조 룩백 OR, None이면 현행 단일 룩백
     ma50_gt_ma150: bool
     low_52w_gain_min_pct: float
     high_52w_within_pct: float
@@ -51,6 +52,8 @@ class TrendCfg:
             above_ma=tuple(int(x) for x in _req(d, "above_ma", "trend_template")),
             ma150_gt_ma200=bool(_req(d, "ma150_gt_ma200", "trend_template")),
             ma200_rising_lookback=int(_req(d, "ma200_rising_lookback", "trend_template")),
+            ma200_rising_lookback_alt=(None if d.get("ma200_rising_lookback_alt") is None
+                                       else int(d["ma200_rising_lookback_alt"])),
             ma50_gt_ma150=bool(_req(d, "ma50_gt_ma150", "trend_template")),
             low_52w_gain_min_pct=float(_req(d, "low_52w_gain_min_pct", "trend_template")),
             high_52w_within_pct=float(_req(d, "high_52w_within_pct", "trend_template")),
@@ -138,6 +141,7 @@ class QualityCfg:
     atr_le_pivot_pct: float
     contraction_lookback: int
     contraction_le_pivot_pct: float
+    contraction_atr_mult: float | None  # R1(Q1b): max(피벗%, k×ATR) 하이브리드, None이면 현행
     dryup_lookback: int
 
     @staticmethod
@@ -146,6 +150,8 @@ class QualityCfg:
             atr_le_pivot_pct=float(_req(d, "atr_le_pivot_pct", "quality")),
             contraction_lookback=int(_req(d, "contraction_lookback", "quality")),
             contraction_le_pivot_pct=float(_req(d, "contraction_le_pivot_pct", "quality")),
+            contraction_atr_mult=(None if d.get("contraction_atr_mult") is None
+                                  else float(d["contraction_atr_mult"])),
             dryup_lookback=int(_req(d, "dryup_lookback", "quality")),
         )
 

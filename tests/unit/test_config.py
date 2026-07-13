@@ -50,6 +50,9 @@ def test_entry_and_stop(cfg: Config) -> None:
 def test_nullable_fields(cfg: Config) -> None:
     assert cfg.overheating.swing_min_count is None
     assert cfg.sizing.min_weight_pct is None
+    # P1 신규 키 — null이면 현행 동치(R1 하이브리드·R2a 보조 룩백 꺼짐).
+    assert cfg.quality.contraction_atr_mult is None
+    assert cfg.trend.ma200_rising_lookback_alt is None
 
 
 def test_fill_derived(cfg: Config) -> None:

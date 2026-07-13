@@ -12,6 +12,7 @@ from oneil_bt.analysis import (
     build_capture_report,
     capture_stats,
     format_capture_summary,
+    load_capture_symbols,
 )
 
 CAPTURE_DF = pd.DataFrame(
@@ -109,3 +110,13 @@ def test_format_capture_summary_smoke() -> None:
     )
     text = format_capture_summary(summary)
     assert "캡처율" in text and "33.3%" in text
+
+
+def test_load_capture_symbols_filters_turnover_and_tier(tmp_path) -> None:
+    # Q8(b): 스윕 캘리브레이션은 max_multiple ≥ 4 & turnover_ok 부분집합을 쓴다.
+    path = tmp_path / "capture_set.csv"
+    CAPTURE_DF.to_csv(path, index=False, encoding="utf-8-sig")
+    # turnover_ok만 (티어 없음): 000444(유동성 미달) 제외.
+    assert load_capture_symbols(path) == ["000111", "000222", "000333"]
+    # ≥4× 티어: 000222(4.5×)만 남는다.
+    assert load_capture_symbols(path, min_multiple=4.0) == ["000222"]
