@@ -10,10 +10,16 @@
 - `write_sweep_csv` — 조합별 1행 CSV(재현성 있는 utf-8-sig).
 - `CaptureCriteria` / `capture_record` / `build_capture_set` — 캡처 회귀 세트(Q8).
 - `build_capture_report` / `capture_stats` — 세트 × 백테스트 산출물 집계(캡처율).
+- `build_activation_report` — 저표본 개정 발동 집계(§3.3 추적 의무, P2~).
 """
 
 from __future__ import annotations
 
+from .activation_report import (
+    build_activation_report,
+    build_activation_report_from_dir,
+    write_activation_report,
+)
 from .capture import CaptureCriteria, CaptureRecord, build_capture_set, capture_record
 from .capture_report import (
     build_capture_report,
@@ -44,8 +50,11 @@ __all__ = [
     "SweepResult",
     "SweepRow",
     "apply_overrides",
+    "build_activation_report",
+    "build_activation_report_from_dir",
     "build_capture_report",
     "build_capture_report_from_dir",
+    "write_activation_report",
     "capture_stats",
     "format_capture_summary",
     "format_sweep",

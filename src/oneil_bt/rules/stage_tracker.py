@@ -35,10 +35,14 @@ _DAYS_PER_MONTH = 365.25 / 12.0
 
 
 class StageTracker:
-    def __init__(self, cfg: Config) -> None:
+    def __init__(self, cfg: Config, *, disable_reset: bool = False) -> None:
+        """disable_reset=True면 R3b 리셋을 배제한 순수 카운트 — 감지기가 §3.3 저표본
+        추적(리셋 경유 진입 판별)용 반사실 단계를 병렬 산출할 때 쓰는 섀도 모드다.
+        베이스 구조는 가격만으로 정해지므로 두 트래커의 베이스·돌파 시퀀스는 동일하고
+        단계 라벨만 갈린다."""
         scfg = cfg.base.stage
         self._step_up_pct = scfg.step_up_close_gain_pct
-        reset_months = scfg.reset_no_breakout_months
+        reset_months = None if disable_reset else scfg.reset_no_breakout_months
         self._reset_days: int | None = (
             None if reset_months is None else round(reset_months * _DAYS_PER_MONTH)
         )

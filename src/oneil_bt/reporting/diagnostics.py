@@ -5,13 +5,16 @@
 엑셀/한글 호환·골든 재현성을 맞춘다. 진단 필드가 비어 있으면 헤더만 있는 파일을 낸다.
 
 산출:
-- entry_funnel.csv   — 종목별 진입 퍼널(각 게이트 통과 세션 수). "왜 안/샀나" 요약.
-- gate_breakdown.csv — 돌파(기회)일마다 게이트 개별 판정. n_failed=1 은 니어미스.
-- base_stage.csv     — 종료 시점 종목별 현 베이스 단계 + 유효 돌파 이력 요약.
+- entry_funnel.csv     — 종목별 진입 퍼널(각 게이트 통과 세션 수). "왜 안/샀나" 요약.
+- gate_breakdown.csv   — 돌파(기회)일마다 게이트 개별 판정. n_failed=1 은 니어미스.
+- base_stage.csv       — 종료 시점 종목별 현 베이스 단계 + 유효 돌파 이력 요약.
+- rule_activations.csv — 저표본 개정 발동 로그(§3.3 추적 의무): R3b 리셋 경유 진입·
+                         Q11 클램프·R4a 핸들 진입. detail은 정렬 키 JSON(결정론).
 """
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +36,7 @@ BASE_STAGE_HEADER = (
     "weeks_elapsed", "tier", "n_breakouts", "max_stage_reached",
     "last_breakout_date", "last_breakout_stage",
 )
+RULE_ACTIVATIONS_HEADER = ("date", "symbol", "rule", "detail")
 
 
 def _b(x: bool) -> str:
@@ -73,6 +77,18 @@ def write_gate_breakdown(result: BacktestResult, path: Path | str) -> None:
         for r in result.gate_breakdown
     ]
     write_csv(path, GATE_BREAKDOWN_HEADER, rows)
+
+
+def write_rule_activations(result: BacktestResult, path: Path | str) -> None:
+    # 엔진 방출 순서(세션 오름차순) = 결정론. detail은 키 정렬 JSON.
+    rows = [
+        [
+            a.date.isoformat(), a.symbol, a.rule,
+            json.dumps(a.detail, ensure_ascii=False, sort_keys=True),
+        ]
+        for a in result.rule_activations
+    ]
+    write_csv(path, RULE_ACTIVATIONS_HEADER, rows)
 
 
 def write_base_stage(result: BacktestResult, path: Path | str) -> None:

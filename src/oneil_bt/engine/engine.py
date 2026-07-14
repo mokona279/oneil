@@ -54,6 +54,7 @@ from .context import (
     EventRecord,
     GateBreakdownRow,
     MarketContext,
+    RuleActivation,
     SymbolContext,
     TradePlan,
     TradeRecord,
@@ -267,6 +268,11 @@ class BacktestEngine:
                 if self.cfg.stop.no_lower_recalc:
                     # Q11(확정): 손절가는 올라가기만 — 평단 소폭 상승+ATR 급증 조합에서
                     # 재계산 손절가가 기존보다 낮아지는 구멍 봉쇄.
+                    if self._record_diag and new_stop < updated.stop_price:
+                        self._result.rule_activations.append(RuleActivation(
+                            d, sym, "q11_stop_clamp",
+                            {"kept": updated.stop_price, "recalc": new_stop},
+                        ))
                     new_stop = max(updated.stop_price, new_stop)
                 pf.positions[sym] = replace(updated, stop_price=new_stop)
             plan.total_entry_cost += fill.cost
@@ -420,6 +426,19 @@ class BacktestEngine:
             "price": fill.price, "qty": fill.qty, "stage": base.stage,
             "pivot": base.pivot,
         })
+        if self._record_diag:
+            # §3.3 저표본 개정 추적 — 리셋 경유 진입·핸들 진입을 분리 기록.
+            plain = base.stage_no_reset if base.stage_no_reset is not None else base.stage
+            if base.stage <= self.cfg.base.stage.max_stage < plain:
+                self._result.rule_activations.append(RuleActivation(
+                    d, sc.symbol, "r3b_reset_entry",
+                    {"stage": base.stage, "stage_no_reset": plain},
+                ))
+            if base.handle:
+                self._result.rule_activations.append(RuleActivation(
+                    d, sc.symbol, "r4a_handle_entry",
+                    {"pivot": base.pivot, "struct_pivot": base.struct_pivot},
+                ))
 
         # 돌파일 거래량 게이트(1.5×) → 2·3차 예약 여부(§6.1). d 거래량은 종가 확정.
         vol_ma20 = sc.ind.asof("vol_ma20", prev)

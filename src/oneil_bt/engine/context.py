@@ -233,6 +233,27 @@ class GateBreakdownRow:
 
 
 @dataclass(frozen=True)
+class RuleActivation:
+    """저표본 개정 발동 1건 — §3.3 추적 의무(P2 승인 조건)의 분리 집계 원자료.
+
+    rule:
+      - "r3b_reset_entry"  — 진입 베이스의 단계가 R3b 리셋 없이는 max_stage 초과였을
+                             신규 진입(detail: stage, stage_no_reset).
+      - "q11_stop_clamp"   — 피라미딩 재계산 손절가가 클램프로 유지된 발동
+                             (detail: kept, recalc).
+      - "r4a_handle_entry" — 손잡이 피벗으로 성사된 신규 진입
+                             (detail: pivot, struct_pivot).
+    골든 해시 제외(진단 채널) — 매 Phase 후보·최종 실행에서 트레이드와 조인해
+    건수·손익 기여를 병기한다.
+    """
+
+    date: date
+    symbol: str
+    rule: str
+    detail: dict
+
+
+@dataclass(frozen=True)
 class BaseStageSnapshot:
     """종료 시점 종목별 베이스 단계 스냅샷 + 유효 돌파 이력 요약.
 
@@ -269,6 +290,7 @@ class BacktestResult:
     entry_funnel: dict[str, EntryFunnel] = field(default_factory=dict)
     gate_breakdown: list[GateBreakdownRow] = field(default_factory=list)
     base_stages: dict[str, BaseStageSnapshot] = field(default_factory=dict)
+    rule_activations: list[RuleActivation] = field(default_factory=list)
 
     @property
     def final_equity(self) -> float:

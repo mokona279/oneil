@@ -288,6 +288,10 @@ def test_stop_no_lower_recalc_clamps(cfg: Config) -> None:
     assert [e for e in result.events if e.event == "PYRAMID"], "2차 체결 전제"
     stops = [t for t in result.trades if t.closed.exit_fill.reason is ExitReason.STOP]
     assert stops, "클램프로 손절가가 유지돼 280 종가에 발동해야"
+    # §3.3 분리 집계: 클램프 발동(하향 재계산 거부)이 진단 채널에 기록돼야 한다.
+    clamps = [a for a in result.rule_activations if a.rule == "q11_stop_clamp"]
+    assert clamps and clamps[0].symbol == "AAA"
+    assert clamps[0].detail["recalc"] < clamps[0].detail["kept"]
 
 
 # --------------------------------------------------------------------------- #

@@ -325,3 +325,130 @@ def test_stage_tracker_reset_disabled_is_bitwise_current(cfg: Config) -> None:
     st.on_bar(close=130.0, low=120.0)
     far = date(2030, 1, 1)
     assert st.stage_for_new_base(far, 99.0) == 4
+
+
+def test_stage_tracker_shadow_ignores_reset(cfg: Config) -> None:
+    # 섀도 모드(disable_reset=True): 리셋 config가 켜져 있어도 R3b를 배제한
+    # 순수 카운트 — §3.3 반사실 단계(stage_no_reset) 산출용.
+    st = StageTracker(_reset_cfg(cfg))
+    shadow = StageTracker(_reset_cfg(cfg), disable_reset=True)
+    for t in (st, shadow):
+        t.on_breakout(D0, close=100.0, base_low=90.0, stage=3)
+        t.on_bar(close=130.0, low=120.0)
+    later = date(2021, 1, 6)                     # 366일 ≥ 365일, 깊이 25% ≥ 20%
+    assert st.stage_for_new_base(later, 25.0) == 1       # 리셋 발동
+    assert shadow.stage_for_new_base(later, 25.0) == 4   # 반사실: +30% 랠리 → +1
+
+
+# --------------------------------------------------------------------------- #
+# R4a(Q10) — 컵위드핸들 손잡이 피벗 (P3)
+# --------------------------------------------------------------------------- #
+def _handle_cfg(cfg: Config, min_sessions: int = 5, max_depth: float = 12.0) -> Config:
+    from oneil_bt.analysis.override import apply_overrides
+    return apply_overrides(cfg, {
+        "base.handle.min_sessions": min_sessions,
+        "base.handle.max_depth_pct": max_depth,
+    })
+
+
+def _cup_with_handle(
+    pullback_low: float = 91.5,
+) -> tuple[list[float], list[float], list[float]]:
+    """정점 100(day0) → 저점 80(day10, 깊이 20%) → 회복 랠리 95(day29 정점)
+    → 5일 눌림(day30-34, 저가 pullback_low) → day35 고가 96(핸들 95 돌파,
+    절대 고점 100 미달) → 꼬리. 7주 티어라 day35(49달력일)에 성숙."""
+    highs = [100.0]; lows = [99.0]; closes = [99.0]
+    for lo in (97, 95, 93, 91, 89, 87, 85, 83, 81, 80):          # day1-10 하락
+        highs.append(lo + 2.0); lows.append(float(lo)); closes.append(lo + 1.0)
+    for hi in np.linspace(83.0, 95.0, 19):                        # day11-29 랠리
+        highs.append(float(hi)); lows.append(float(hi) - 2.0); closes.append(float(hi) - 1.0)
+    for _ in range(5):                                            # day30-34 눌림
+        highs.append(94.0); lows.append(pullback_low); closes.append(92.0)
+    highs.append(96.0); lows.append(93.0); closes.append(95.5)    # day35 핸들 돌파
+    for _ in range(4):                                            # 꼬리
+        highs.append(94.0); lows.append(92.0); closes.append(93.0)
+    return highs, lows, closes
+
+
+def test_handle_pivot_detected(cfg: Config) -> None:
+    highs, lows, closes = _cup_with_handle()
+    frame, dates = _frame(highs, lows, closes)
+    det = _detector(_handle_cfg(cfg), frame, dates)
+    base = det.base_asof(dates[35])  # 49달력일 = 7주 성숙, 눌림 5일(day30-34)
+    assert base is not None
+    assert base.handle is True
+    assert base.pivot == pytest.approx(95.0)          # 진입 피벗 = 손잡이 고점
+    assert base.struct_pivot == pytest.approx(100.0)  # 절대 고점은 참고 보존
+    assert base.depth_pct == pytest.approx(20.0)      # 구조 깊이는 절대 고점 기준
+    assert base.min_weeks == 7
+    # 핸들 돌파: 당일 고가 96 ≥ 95(핸들) — 절대 고점 100엔 못 미쳐도 진입 기회.
+    assert det.is_breakout(dates[35], base) is True
+    # 스캔 수준 유효 돌파(절대 고점)는 발생하지 않음 — 구조는 절대 고점 기준 유지.
+    assert det.breakouts == []
+
+
+def test_handle_off_is_bitwise_current(cfg: Config) -> None:
+    # 기본 null(끔)이면 같은 프레임에서 절대 고점 피벗 — 현행 비트 동치.
+    highs, lows, closes = _cup_with_handle()
+    frame, dates = _frame(highs, lows, closes)
+    det = _detector(cfg, frame, dates)
+    base = det.base_asof(dates[35])
+    assert base is not None
+    assert base.handle is False
+    assert base.struct_pivot is None
+    assert base.pivot == pytest.approx(100.0)
+    assert det.is_breakout(dates[35], base) is False  # 96 < 100
+
+
+def test_handle_min_sessions_boundary(cfg: Config) -> None:
+    # 눌림 5일 < min_sessions 6 → 핸들 불인정.
+    highs, lows, closes = _cup_with_handle()
+    frame, dates = _frame(highs, lows, closes)
+    det = _detector(_handle_cfg(cfg, min_sessions=6), frame, dates)
+    base = det.base_asof(dates[35])
+    assert base is not None and base.handle is False
+    assert base.pivot == pytest.approx(100.0)
+
+
+def test_handle_depth_boundary(cfg: Config) -> None:
+    # 눌림 깊이 (95-91.5)/95 = 3.7% > 상한 3% → 핸들 불인정.
+    highs, lows, closes = _cup_with_handle()
+    frame, dates = _frame(highs, lows, closes)
+    det = _detector(_handle_cfg(cfg, max_depth=3.0), frame, dates)
+    base = det.base_asof(dates[35])
+    assert base is not None and base.handle is False
+
+
+def test_handle_requires_upper_half(cfg: Config) -> None:
+    # 눌림 저가 89 < 중점 90(=80+0.5×20) → 상반부 요건 미달, 핸들 불인정.
+    highs, lows, closes = _cup_with_handle(pullback_low=89.0)
+    frame, dates = _frame(highs, lows, closes)
+    det = _detector(_handle_cfg(cfg), frame, dates)
+    base = det.base_asof(dates[35])
+    assert base is not None and base.handle is False
+
+
+def test_handle_vanishes_after_peak_retouch(cfg: Config) -> None:
+    # day35 고가 96이 손잡이 고점(95)을 넘으면 눌림 시계 리셋 → 다음 세션엔
+    # 핸들 소멸(진입 기회는 돌파일 하루), 절대 고점 피벗으로 복귀.
+    highs, lows, closes = _cup_with_handle()
+    frame, dates = _frame(highs, lows, closes)
+    det = _detector(_handle_cfg(cfg), frame, dates)
+    base = det.base_asof(dates[36])
+    assert base is not None and base.handle is False
+    assert base.pivot == pytest.approx(100.0)
+
+
+def test_handle_lookahead_free(cfg: Config) -> None:
+    # 돌파일(day35) 이후 바를 조작해도 base_asof(day35)의 핸들 확정은 불변.
+    highs, lows, closes = _cup_with_handle()
+    frame_a, dates = _frame(highs, lows, closes)
+    highs_b, lows_b, closes_b = list(highs), list(lows), list(closes)
+    highs_b[35], lows_b[35], closes_b[35] = 75.0, 70.0, 72.0   # 돌파 대신 급락
+    frame_b, _ = _frame(highs_b, lows_b, closes_b)
+    hcfg = _handle_cfg(cfg)
+    base_a = _detector(hcfg, frame_a, dates).base_asof(dates[35])
+    base_b = _detector(hcfg, frame_b, dates).base_asof(dates[35])
+    assert base_a is not None and base_b is not None
+    assert base_a.pivot == pytest.approx(base_b.pivot) == pytest.approx(95.0)
+    assert base_a.handle is base_b.handle is True

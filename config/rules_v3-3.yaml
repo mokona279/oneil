@@ -47,6 +47,9 @@ base:                             # §5 베이스 규칙
     overlimit_weight_factor: null # R3a(개선계획 Q5a): 4단계+ 감액 진입 — P2 실측 기각(자본 경합), Q13 해소 후 재상정. null=금지
     reset_no_breakout_months: 12  # R3b(Q5b): 12개월 무돌파+깊이 20%+ 새 베이스 → 단계 1 리셋 — P2 승인(2026-07-14, 과적합 추적 조건부)
     reset_min_depth_pct: 20       # R3b 리셋 인정 최소 베이스 깊이(%)
+  handle:                         # R4a(Q10): 컵위드핸들 손잡이 피벗 — P3 캘리브레이션 중(승인 대기)
+    min_sessions: null            # 눌림 최소 지속 거래일(랠리 정점 이후). null = 현행(절대 고점 피벗)
+    max_depth_pct: null           # 눌림 깊이 상한(손잡이 고점 대비 %) — min_sessions와 함께 설정
 
 quality:                          # §5 품질요건 (전부 충족)
   atr_le_pivot_pct: 10            # 2*ATR <= 피벗*10%

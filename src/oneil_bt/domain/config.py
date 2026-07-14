@@ -116,11 +116,21 @@ class StageCfg:
 
 
 @dataclass(frozen=True)
+class HandleCfg:
+    # R4a(Q10): 컵위드핸들 손잡이 피벗 — 최종 저점 이후 회복 랠리 정점(절대 고점 미만)에서
+    # min_sessions 거래일 이상 이어진 얕은 눌림(깊이 ≤ max_depth_pct%, 상반부)이면 그 정점을
+    # 진입 피벗으로 쓴다. min_sessions가 None이면 꺼짐(현행 절대 고점 피벗과 비트 동치).
+    min_sessions: int | None
+    max_depth_pct: float | None
+
+
+@dataclass(frozen=True)
 class BaseCfg:
     depth_tiers: tuple[DepthTier, ...]
     invalid_depth_pct: float
     min_days_per_week: int
     stage: StageCfg
+    handle: HandleCfg
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "BaseCfg":
@@ -142,6 +152,19 @@ class BaseCfg:
                 "base.stage.reset_min_depth_pct is required when "
                 "reset_no_breakout_months is set"
             )
+        hd = d.get("handle") or {}
+        handle_min = (None if hd.get("min_sessions") is None
+                      else int(hd["min_sessions"]))
+        handle_depth = (None if hd.get("max_depth_pct") is None
+                        else float(hd["max_depth_pct"]))
+        if handle_min is not None:
+            if handle_min < 1:
+                raise ConfigError("base.handle.min_sessions must be >= 1")
+            # 핸들을 켜려면 눌림 깊이 상한도 YAML에 있어야 한다(코드 기본값 하드코딩 금지).
+            if handle_depth is None:
+                raise ConfigError(
+                    "base.handle.max_depth_pct is required when min_sessions is set"
+                )
         return BaseCfg(
             depth_tiers=tiers,
             invalid_depth_pct=float(_req(d, "invalid_depth_pct", "base")),
@@ -153,6 +176,10 @@ class BaseCfg:
                                          else float(st["overlimit_weight_factor"])),
                 reset_no_breakout_months=reset_months,
                 reset_min_depth_pct=reset_depth,
+            ),
+            handle=HandleCfg(
+                min_sessions=handle_min,
+                max_depth_pct=handle_depth,
             ),
         )
 

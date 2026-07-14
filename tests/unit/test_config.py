@@ -160,3 +160,49 @@ def test_reset_months_requires_depth(tmp_path: Path) -> None:
     bad.write_text(yaml.safe_dump(data), encoding="utf-8")
     with pytest.raises(ConfigError):
         Config.load(bad, COSTS)
+
+
+# --------------------------------------------------------------------------- #
+# P3 신규 키 — R4a(핸들 피벗). 기본 null = 현행(절대 고점 피벗) 비트 동치.
+# --------------------------------------------------------------------------- #
+def test_p3_handle_defaults_off(cfg: Config) -> None:
+    assert cfg.base.handle.min_sessions is None      # 캘리브레이션 중(승인 대기)
+    assert cfg.base.handle.max_depth_pct is None
+
+
+def test_p3_handle_keys_parse(tmp_path: Path) -> None:
+    import yaml
+
+    data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    data["base"]["handle"] = {"min_sessions": 5, "max_depth_pct": 12}
+    good = tmp_path / "rules.yaml"
+    good.write_text(yaml.safe_dump(data), encoding="utf-8")
+    cfg = Config.load(good, COSTS)
+    assert cfg.base.handle.min_sessions == 5
+    assert cfg.base.handle.max_depth_pct == 12.0
+
+
+def test_p3_handle_section_omitted_default_off(tmp_path: Path) -> None:
+    # handle 섹션 자체가 없는 구(舊) YAML도 로드된다(하위호환) — 끔으로.
+    import yaml
+
+    data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    data["base"].pop("handle", None)
+    old = tmp_path / "rules.yaml"
+    old.write_text(yaml.safe_dump(data), encoding="utf-8")
+    cfg = Config.load(old, COSTS)
+    assert cfg.base.handle.min_sessions is None
+    assert cfg.base.handle.max_depth_pct is None
+
+
+def test_p3_handle_requires_depth_and_positive(tmp_path: Path) -> None:
+    # 켜는데 깊이 상한이 없거나 min_sessions < 1이면 명시적 실패.
+    import yaml
+
+    for patch in ({"min_sessions": 5}, {"min_sessions": 0, "max_depth_pct": 12}):
+        data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+        data["base"]["handle"] = patch
+        bad = tmp_path / "rules.yaml"
+        bad.write_text(yaml.safe_dump(data), encoding="utf-8")
+        with pytest.raises(ConfigError):
+            Config.load(bad, COSTS)
