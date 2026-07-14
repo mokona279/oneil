@@ -60,6 +60,11 @@ oneil/
 ├─ src/oneil_fetch/            # 실데이터 수집 (pykrx/FDR → 엔진 CSV). oneil_bt 무의존
 │  ├─ krx_client / transform / universe / incremental / meta_builder / state / writer
 │  └─ env_loader / cli / __main__
+├─ scripts/                    # 운영 스크립트 — 오늘자 스크리닝/증분수집 (백테스트 무관)
+│  ├─ screen_today.py          #   전 종목 매수후보 + 보유점검 + 매수금액 (holdings 인식)
+│  ├─ daily.ps1 · daily.bat    #   일괄: 수집→스크리닝→(옵션)백테스트
+│  └─ fetch.ps1 · fetch.bat    #   오늘 자동감지 증분 수집(전용)
+├─ state/                      # 계좌 상태 — holdings.csv(gitignore)·holdings.example.csv(템플릿)
 └─ tests/
    ├─ fixtures/   synthetic.py  (합성 OHLCV 빌더)
    ├─ unit/       (모듈별 미러링)
@@ -181,6 +186,43 @@ PYTHONPATH=src "C:/Users/mh.han/repos/daytrading/.venv/Scripts/python.exe" \
 
 진단 산출 로직은 [`reporting/diagnostics.py`](src/oneil_bt/reporting/diagnostics.py). 스윕은
 조합별 성과지표를 `--out` CSV 한 파일로만 낸다(위 진단 3종은 스윕 산출엔 없음).
+
+### 매일 운영 — 오늘자 매수 후보 (`scripts/`)
+
+백테스터를 "오늘 무엇을 살까"에 쓰는 운영 스크립트. **증권계좌 자동연동은 없다** — 현금·보유
+종목을 `state/holdings.csv`에 직접 적어두고 체결 후 수동 갱신한다. 엔진 규칙 컴포넌트를 그대로
+재사용하므로 룩어헤드 없이 백테스트와 동일 판정이다.
+
+| 스크립트 | 하는 일 |
+|---|---|
+| `scripts/screen_today.py` | 마지막 세션 기준 전 종목 평가 → 매수후보(피벗·매수존·손절·**매수금액**) + 보유종목 손절/청산 신호. `--holdings`면 최신종가로 평가액 자동 산정, 없으면 `--equity`. |
+| `scripts/fetch.ps1` / `.bat` | **오늘 날짜 자동 감지 + 증분 수집**(전용). `oneil_fetch` 래퍼. |
+| `scripts/daily.ps1` / `.bat` | 일괄: ①증분수집 → ②스크리닝 → (`-Backtest`) ③전 유니버스 백테스트. |
+
+```powershell
+# 전체(수집 포함) — 오늘 날짜 자동 감지
+powershell -ExecutionPolicy Bypass -File scripts\daily.ps1
+scripts\daily.ps1 -SkipFetch     # 수집 생략, 스크리닝만(빠름)
+scripts\fetch.bat                # 데이터만 오늘까지 증분 갱신(느림 — 장 마감 후 권장)
+```
+
+**산출** → `out/daily/<날짜>/`:
+- `buy_candidates.csv` — 전 종목 게이트별 통과여부·피벗·매수존(피벗~+5%)·비중%·1차매수액·수량·손절가·거래량기준.
+- `holdings_report.csv` — 보유종목 최신종가 마크·손익·R배수·손절도달·60MA이탈·시장방어 신호.
+
+**`state/holdings.csv`** 스키마 (gitignore 대상 — 개인정보. 템플릿: `state/holdings.example.csv`):
+
+```
+symbol,qty,avg_price,entry_date,stop_price
+CASH,30000000,,,            # 현금은 qty 칸에 원화 금액
+005930,50,250000,2026-04-01,235000
+```
+
+> 시장필터가 핵심 게이트다. 신규진입은 지수가 60MA 위 3거래일 유지(NORMAL)라야 열린다 —
+> KOSPI CAUTION·KOSDAQ DEFENSE면 후보 0종목이 정상(규칙대로 신규매수 금지).
+
+> **주의(운영)**: `daily.ps1`은 공유 PowerShell 5.1이 BOM 없는 UTF-8을 cp949로 오독해 깨지므로
+> 메시지를 ASCII로 뒀다(사용자가 보는 한글 표는 Python 스크리너가 utf-8로 출력). 편집 시 유지.
 
 ### 실전 워크플로우 (실데이터)
 

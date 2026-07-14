@@ -46,6 +46,10 @@ out/
 /data/
 !/data_example/
 
+# 계좌 상태(현금·보유종목) — 개인정보, 커밋 금지 (템플릿만 예외)
+/state/*
+!/state/holdings.example.csv
+
 # IDE / editor
 .vscode/
 .idea/
