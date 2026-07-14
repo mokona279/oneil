@@ -264,6 +264,10 @@ class BacktestEngine:
             atr = self._atr_asof(sc, prev)
             if atr is not None:
                 new_stop = sc.stop.stop_price(updated.avg_price, atr)
+                if self.cfg.stop.no_lower_recalc:
+                    # Q11(확정): 손절가는 올라가기만 — 평단 소폭 상승+ATR 급증 조합에서
+                    # 재계산 손절가가 기존보다 낮아지는 구멍 봉쇄.
+                    new_stop = max(updated.stop_price, new_stop)
                 pf.positions[sym] = replace(updated, stop_price=new_stop)
             plan.total_entry_cost += fill.cost
             plan.total_entry_qty += fill.qty
@@ -283,6 +287,9 @@ class BacktestEngine:
         diag = self._record_diag
         funnel = self._result.entry_funnel
         max_stage = self.cfg.base.stage.max_stage
+        # R3a(Q5a): 계수가 있으면 max_stage 초과 베이스도 감액 진입 허용(_try_open에서
+        # 목표 비중에 곱한다). None이면 현행(초과 = 진입 금지).
+        overlimit = self.cfg.base.stage.overlimit_weight_factor
 
         candidates: list[tuple[str, Base, float]] = []
         for sym, sc in self._symctx.items():
@@ -297,7 +304,7 @@ class BacktestEngine:
                 continue
             if diag:
                 funnel[sym].base_present += 1
-            if base.stage > max_stage:
+            if base.stage > max_stage and overlimit is None:
                 continue
             if diag:
                 funnel[sym].stage_ok += 1
@@ -375,6 +382,10 @@ class BacktestEngine:
         if atr is None:
             return False
         weight = self.sizer.target_weight(base.pivot, atr)
+        if base.stage > self.cfg.base.stage.max_stage:
+            # R3a(Q5a): 후기(초과) 베이스는 감액 진입 — 1회 손실이 risk%×계수로 준다.
+            # 게이트에서 계수 None인 초과 베이스는 걸렀으므로 여기선 항상 값이 있다.
+            weight *= self.cfg.base.stage.overlimit_weight_factor
         target_notional = self.sizer.target_notional(equity, weight)
         ratios = self.cfg.entry.tranche_ratios
         qty = self.sizer.tranche_qty(equity, weight, ratios[0], base.pivot)

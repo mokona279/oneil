@@ -113,10 +113,12 @@ class BaseDetector:
                 # 이 신고가에서 베이스를 다시 무장한다(규칙서 §5 정의1·무효화1).
                 elapsed = (dates[i] - dates[start_pos]).days
                 if self._matured(self._depth(pivot, base_low), elapsed):
-                    tracker.on_breakout(c, base_low, base_stage)
+                    tracker.on_breakout(dates[i], c, base_low, base_stage)
                     self._breakouts.append(Breakout(dates[i], base_stage, pivot))
                 start_pos, pivot, base_low = i, h, low
-                base_stage = tracker.stage_for_new_base()
+                base_stage = tracker.stage_for_new_base(
+                    dates[i], self._depth(pivot, base_low)
+                )
                 self._cand[i] = (start_pos, pivot, base_low, base_stage)
                 continue
 
@@ -127,7 +129,9 @@ class BaseDetector:
                 # 랠리의 신고가마다 위 분기가 시작점을 정점으로 끌어올린다.
                 start_pos, pivot, base_low = i, h, low
 
-            base_stage = tracker.stage_for_new_base()
+            base_stage = tracker.stage_for_new_base(
+                dates[i], self._depth(pivot, base_low)
+            )
             self._cand[i] = (start_pos, pivot, base_low, base_stage)
 
     # ------------------------------------------------------------------ #

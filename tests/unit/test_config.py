@@ -118,3 +118,45 @@ def test_unsorted_depth_tiers_raises(tmp_path: Path) -> None:
 def test_config_is_frozen(cfg: Config) -> None:
     with pytest.raises(Exception):
         cfg.rulebook_version = "x"  # type: ignore[misc]
+
+
+# --------------------------------------------------------------------------- #
+# P2 신규 키 — R3(단계 규칙)·Q11(손절 클램프). 기본값 = 현행 동치(끔).
+# --------------------------------------------------------------------------- #
+def test_p2_keys_defaults_off(cfg: Config) -> None:
+    st = cfg.base.stage
+    assert st.overlimit_weight_factor is None       # R3a 꺼짐 = 4단계+ 금지
+    assert st.reset_no_breakout_months is None      # R3b 꺼짐 = 리셋은 저점 하회뿐
+    assert st.reset_min_depth_pct == 20.0           # months가 null이라 무효
+    assert cfg.stop.no_lower_recalc is False        # Q11 꺼짐 = 현행(하향 허용)
+
+
+def test_p2_keys_omitted_default_off(tmp_path: Path) -> None:
+    # 키 자체가 없는 구(舊) YAML도 로드된다(하위호환) — 전부 끔으로.
+    import yaml
+
+    data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    for key in ("overlimit_weight_factor", "reset_no_breakout_months",
+                "reset_min_depth_pct"):
+        data["base"]["stage"].pop(key, None)
+    data["stop"].pop("no_lower_recalc", None)
+    old = tmp_path / "rules.yaml"
+    old.write_text(yaml.safe_dump(data), encoding="utf-8")
+    cfg = Config.load(old, COSTS)
+    assert cfg.base.stage.overlimit_weight_factor is None
+    assert cfg.base.stage.reset_no_breakout_months is None
+    assert cfg.base.stage.reset_min_depth_pct is None
+    assert cfg.stop.no_lower_recalc is False
+
+
+def test_reset_months_requires_depth(tmp_path: Path) -> None:
+    # 리셋을 켜는데 깊이 임계가 YAML에 없으면 명시적 실패(조용한 기본값 금지).
+    import yaml
+
+    data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    data["base"]["stage"]["reset_no_breakout_months"] = 12
+    data["base"]["stage"].pop("reset_min_depth_pct", None)
+    bad = tmp_path / "rules.yaml"
+    bad.write_text(yaml.safe_dump(data), encoding="utf-8")
+    with pytest.raises(ConfigError):
+        Config.load(bad, COSTS)

@@ -249,27 +249,77 @@ def test_base_asof_ignores_future_bars(cfg: Config) -> None:
 # --------------------------------------------------------------------------- #
 # StageTracker 단위 — 상승/유지/리셋
 # --------------------------------------------------------------------------- #
+D0 = date(2020, 1, 6)   # 판정일(리셋 꺼짐 케이스에선 값 무관)
+
+
 def test_stage_tracker_first_base_is_one(cfg: Config) -> None:
     st = StageTracker(cfg)
-    assert st.stage_for_new_base() == 1
+    assert st.stage_for_new_base(D0, 5.0) == 1
 
 
 def test_stage_tracker_steps_up_on_20pct(cfg: Config) -> None:
     st = StageTracker(cfg)
-    st.on_breakout(close=100.0, base_low=90.0, stage=2)
+    st.on_breakout(D0, close=100.0, base_low=90.0, stage=2)
     st.on_bar(close=125.0, low=120.0)   # +25% 종가
-    assert st.stage_for_new_base() == 3
+    assert st.stage_for_new_base(D0, 5.0) == 3
 
 
 def test_stage_tracker_maintained_below_20pct(cfg: Config) -> None:
     st = StageTracker(cfg)
-    st.on_breakout(close=100.0, base_low=90.0, stage=2)
+    st.on_breakout(D0, close=100.0, base_low=90.0, stage=2)
     st.on_bar(close=115.0, low=110.0)   # +15% 종가
-    assert st.stage_for_new_base() == 2
+    assert st.stage_for_new_base(D0, 5.0) == 2
 
 
 def test_stage_tracker_resets_on_undercut(cfg: Config) -> None:
     st = StageTracker(cfg)
-    st.on_breakout(close=100.0, base_low=90.0, stage=2)
+    st.on_breakout(D0, close=100.0, base_low=90.0, stage=2)
     st.on_bar(close=110.0, low=85.0)    # 직전 베이스 저점(90) 하회
-    assert st.stage_for_new_base() == 1
+    assert st.stage_for_new_base(D0, 5.0) == 1
+
+
+# --------------------------------------------------------------------------- #
+# StageTracker R3b(Q5b) — 새 사이클 리셋 (N개월 무돌파 + 깊은 새 베이스)
+# --------------------------------------------------------------------------- #
+def _reset_cfg(cfg: Config, months: int = 12, min_depth: float = 20.0) -> Config:
+    from oneil_bt.analysis.override import apply_overrides
+    return apply_overrides(cfg, {
+        "base.stage.reset_no_breakout_months": months,
+        "base.stage.reset_min_depth_pct": min_depth,
+    })
+
+
+def test_stage_tracker_new_cycle_reset(cfg: Config) -> None:
+    # 12개월+ 무돌파 & 깊이 20%+ 새 베이스 → 단계 1 (그 사이 +20% 랠리가 있었어도).
+    st = StageTracker(_reset_cfg(cfg))
+    st.on_breakout(D0, close=100.0, base_low=90.0, stage=3)
+    st.on_bar(close=130.0, low=120.0)   # +30% 랠리 — 리셋 없으면 단계 4
+    later = date(2021, 1, 6)            # 366일 ≥ 365일(12개월)
+    assert st.stage_for_new_base(later, 25.0) == 1
+
+
+def test_stage_tracker_no_reset_when_shallow(cfg: Config) -> None:
+    # 기간은 충족해도 깊이 미달(20% 미만) → 리셋 없음(기존 카운트 경로).
+    st = StageTracker(_reset_cfg(cfg))
+    st.on_breakout(D0, close=100.0, base_low=90.0, stage=3)
+    st.on_bar(close=130.0, low=120.0)
+    later = date(2021, 1, 6)
+    assert st.stage_for_new_base(later, 15.0) == 4   # +30% 랠리 → 단계 +1
+
+
+def test_stage_tracker_no_reset_before_period(cfg: Config) -> None:
+    # 깊이는 충족해도 무돌파 기간 미달 → 리셋 없음.
+    st = StageTracker(_reset_cfg(cfg))
+    st.on_breakout(D0, close=100.0, base_low=90.0, stage=3)
+    st.on_bar(close=115.0, low=110.0)   # +15% — 미달 재베이스
+    soon = date(2020, 6, 1)             # 147일 < 365일
+    assert st.stage_for_new_base(soon, 25.0) == 3
+
+
+def test_stage_tracker_reset_disabled_is_bitwise_current(cfg: Config) -> None:
+    # 기본 config(months=null)에선 d·depth를 무시하고 현행과 동일하게 동작.
+    st = StageTracker(cfg)
+    st.on_breakout(D0, close=100.0, base_low=90.0, stage=3)
+    st.on_bar(close=130.0, low=120.0)
+    far = date(2030, 1, 1)
+    assert st.stage_for_new_base(far, 99.0) == 4

@@ -38,7 +38,10 @@ base:                             # §5 베이스 규칙
   min_days_per_week: 7            # 최소 N주 = 경과 >= 7*N 달력일
   stage:
     step_up_close_gain_pct: 20    # 유효돌파 후 +20% 상승 뒤 베이스 = 단계+1
-    max_stage: 3                  # 1~3 허용, 4+ 금지
+    max_stage: 3                  # 1~3 허용, 4+ 금지(overlimit_weight_factor로 감액 허용 가능)
+    overlimit_weight_factor: null # R3a(개선계획 Q5a): 4단계+ 감액 진입 비중 계수(제안 0.5) — P2 승인 대기, null=현행 금지
+    reset_no_breakout_months: null # R3b(Q5b): N개월 무돌파+깊은 새 베이스 → 단계 1 리셋(제안 12) — P2 승인 대기, null=현행
+    reset_min_depth_pct: 20       # R3b 리셋 인정 최소 베이스 깊이(%) — months가 null이면 무효
 
 quality:                          # §5 품질요건 (전부 충족)
   atr_le_pivot_pct: 10            # 2*ATR <= 피벗*10%
@@ -61,6 +64,7 @@ stop:                             # §6-①
   max_stop_pct: 10                # 손절폭 캡 -10%
   fixed_pct: 8                    # 대안(고정 -7~8%)
   fill_model: close_confirmed_next_open   # Q1: vs intraday_touch
+  no_lower_recalc: false          # Q11(확정 2026-07-12): 피라미딩 재계산 시 손절가 하향 금지 — P2 승인 시 true
 
 exit:                             # §6-②③ + 보조
   ma_trend: 60

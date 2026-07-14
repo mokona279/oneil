@@ -106,6 +106,13 @@ class DepthTier:
 class StageCfg:
     step_up_close_gain_pct: float
     max_stage: int
+    # R3a(Q5a): max_stage 초과 베이스의 감액 진입 — 목표 비중에 곱할 계수(예: 0.5).
+    # None이면 현행(4단계+ 진입 금지).
+    overlimit_weight_factor: float | None
+    # R3b(Q5b): 마지막 유효 돌파 후 N개월 무돌파 + 깊이 임계 이상 새 베이스 → 단계 1 리셋.
+    # months가 None이면 현행(리셋은 직전 베이스 저점 하회뿐).
+    reset_no_breakout_months: int | None
+    reset_min_depth_pct: float | None
 
 
 @dataclass(frozen=True)
@@ -125,6 +132,16 @@ class BaseCfg:
         if list(tiers) != sorted(tiers, key=lambda t: t.max_depth_pct):
             raise ConfigError("base.depth_tiers must be sorted by max_depth_pct ascending")
         st = _req(d, "stage", "base")
+        reset_months = (None if st.get("reset_no_breakout_months") is None
+                        else int(st["reset_no_breakout_months"]))
+        reset_depth = (None if st.get("reset_min_depth_pct") is None
+                       else float(st["reset_min_depth_pct"]))
+        # 리셋을 켜려면 깊이 임계도 YAML에 있어야 한다(코드 기본값 하드코딩 금지).
+        if reset_months is not None and reset_depth is None:
+            raise ConfigError(
+                "base.stage.reset_min_depth_pct is required when "
+                "reset_no_breakout_months is set"
+            )
         return BaseCfg(
             depth_tiers=tiers,
             invalid_depth_pct=float(_req(d, "invalid_depth_pct", "base")),
@@ -132,6 +149,10 @@ class BaseCfg:
             stage=StageCfg(
                 step_up_close_gain_pct=float(_req(st, "step_up_close_gain_pct", "base.stage")),
                 max_stage=int(_req(st, "max_stage", "base.stage")),
+                overlimit_weight_factor=(None if st.get("overlimit_weight_factor") is None
+                                         else float(st["overlimit_weight_factor"])),
+                reset_no_breakout_months=reset_months,
+                reset_min_depth_pct=reset_depth,
             ),
         )
 
@@ -191,6 +212,9 @@ class StopCfg:
     max_stop_pct: float
     fixed_pct: float
     fill_model: FillModelType
+    # Q11(개선계획 §5, 확정 2026-07-12): 피라미딩 재계산 시 손절가 하향 금지 —
+    # max(기존, 새 손절가). False면 현행(하향 허용). P2 트레이드오프 승인 시 기본 켬.
+    no_lower_recalc: bool
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "StopCfg":
@@ -200,6 +224,7 @@ class StopCfg:
             max_stop_pct=float(_req(d, "max_stop_pct", "stop")),
             fixed_pct=float(_req(d, "fixed_pct", "stop")),
             fill_model=FillModelType(str(_req(d, "fill_model", "stop"))),
+            no_lower_recalc=bool(d.get("no_lower_recalc", False)),
         )
 
 

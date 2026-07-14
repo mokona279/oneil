@@ -13,9 +13,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from oneil_bt.analysis.override import apply_overrides
 from oneil_bt.domain.bar import PriceFrame
 from oneil_bt.domain.config import Config
-from oneil_bt.domain.enums import Market, MarketState
+from oneil_bt.domain.enums import ExitReason, Market, MarketState
 from oneil_bt.data.metadata import SymbolMeta
 from oneil_bt.engine.engine import BacktestEngine
 from tests.fixtures.synthetic import business_dates, ohlcv_frame
@@ -193,6 +194,98 @@ def test_no_lookahead_future_bars_do_not_change_past(cfg: Config) -> None:
         assert a.date == b.date
         assert a.equity == pytest.approx(b.equity)
         assert a.n_positions == b.n_positions
+
+
+# --------------------------------------------------------------------------- #
+# R3a(Q5a) — max_stage 초과 베이스의 감액 진입
+# --------------------------------------------------------------------------- #
+def test_overlimit_stage_blocked_without_factor(cfg: Config) -> None:
+    # 픽스처 베이스는 1단계 — max_stage=0으로 낮추면 '초과 베이스'가 된다.
+    # 계수 없음(현행) → 진입 금지 그대로.
+    source, dates = _mem_source()
+    over = apply_overrides(cfg, {"base.stage.max_stage": 0})
+    result = BacktestEngine(source, over, initial_cash=1.0e8).run(
+        dates[0], dates[-1], symbols=["AAA"]
+    )
+    assert not [e for e in result.events if e.event == "ENTRY"]
+
+
+def test_overlimit_stage_enters_with_reduced_weight(cfg: Config) -> None:
+    # 계수 0.5 → 초과 베이스도 진입하되 목표 비중(=1차 수량)이 절반으로 준다.
+    source, dates = _mem_source()
+    full = BacktestEngine(source, cfg, initial_cash=1.0e8).run(
+        dates[0], dates[-1], symbols=["AAA"]
+    )
+    reduced_cfg = apply_overrides(cfg, {
+        "base.stage.max_stage": 0,
+        "base.stage.overlimit_weight_factor": 0.5,
+    })
+    reduced = BacktestEngine(source, reduced_cfg, initial_cash=1.0e8).run(
+        dates[0], dates[-1], symbols=["AAA"]
+    )
+    q_full = next(e for e in full.events if e.event == "ENTRY").detail["qty"]
+    ent = next(e for e in reduced.events if e.event == "ENTRY")
+    q_half = ent.detail["qty"]
+    # 같은 돌파일에 진입하되 수량은 절반(정수주 floor ±1).
+    assert ent.date == next(e for e in full.events if e.event == "ENTRY").date
+    assert abs(q_half * 2 - q_full) <= 2
+
+
+# --------------------------------------------------------------------------- #
+# Q11 — 피라미딩 재계산 손절가 하향 금지 클램프
+# --------------------------------------------------------------------------- #
+def _atr_spike_source() -> tuple[MemSource, list[date]]:
+    """진입 후 ATR이 급증해 2차 체결 시 재계산 손절가가 기존보다 낮아지는 시나리오.
+
+    돌파 진입(≈306, 손절 ≈282) → 5일 장중 급변동(저가 -20%, 종가 유지)으로 ATR 폭증
+    → 2차 트리거(+2.5%) 체결 시 재계산 = 평단-10% 캡 바닥(≈278) < 기존 282.
+    이후 종가 280: 클램프면 손절 발동(280 ≤ 282), 아니면 미발동(280 > 278).
+    """
+    n_wide = 5
+    closes = (list(np.linspace(100.0, 300.0, UPTREND))
+              + [295.0 + (2.0 if i % 2 == 0 else -2.0) for i in range(BASE)]
+              + [305.0]                    # 돌파일: high=311.1 ≥ 피벗 306
+              + [305.0] * n_wide           # 장중 급변동 구간(종가 유지)
+              + [315.0]                    # 2차 트리거(313.65) 도달·체결
+              + [280.0] * (TAIL - n_wide - 2))
+    vols = ([5_000.0] * UPTREND + [2_000.0] * (BASE - 10) + [800.0] * 10
+            + [6_000.0] * TAIL)
+    n = len(closes)
+    dates = business_dates("2019-01-01", n)
+    df = ohlcv_frame(dates, closes, vols, values=[2.0e10] * n)
+    # 급변동 구간의 장중 저가만 -20%로 끌어내려 TR을 키운다(종가·고가는 그대로).
+    lo = UPTREND + BASE + 1
+    df.iloc[lo:lo + n_wide, df.columns.get_loc("low")] = 305.0 * 0.80
+    index = PriceFrame("KOSPI", ohlcv_frame(dates, list(np.linspace(100.0, 150.0, n)), 0.0))
+    source = MemSource(
+        {"AAA": PriceFrame("AAA", df)},
+        {"AAA": SymbolMeta("AAA", "AAA", Market.KOSPI, None, None)},
+        {Market.KOSPI: index},
+    )
+    return source, dates
+
+
+def test_stop_recalc_can_lower_without_clamp(cfg: Config) -> None:
+    # 현행(no_lower_recalc=false): 재계산이 손절가를 내려 280 종가에 손절 미발동.
+    source, dates = _atr_spike_source()
+    result = BacktestEngine(source, cfg, initial_cash=1.0e8).run(
+        dates[0], dates[-1], symbols=["AAA"]
+    )
+    assert [e for e in result.events if e.event == "PYRAMID"], "2차 체결 전제"
+    stops = [t for t in result.trades if t.closed.exit_fill.reason is ExitReason.STOP]
+    assert not stops, "하향된 손절가(≈278)라 280 종가에선 발동하지 않아야"
+
+
+def test_stop_no_lower_recalc_clamps(cfg: Config) -> None:
+    # Q11 클램프: 재계산해도 기존 손절가(≈282) 유지 → 280 종가에 손절 발동.
+    source, dates = _atr_spike_source()
+    clamped_cfg = apply_overrides(cfg, {"stop.no_lower_recalc": True})
+    result = BacktestEngine(source, clamped_cfg, initial_cash=1.0e8).run(
+        dates[0], dates[-1], symbols=["AAA"]
+    )
+    assert [e for e in result.events if e.event == "PYRAMID"], "2차 체결 전제"
+    stops = [t for t in result.trades if t.closed.exit_fill.reason is ExitReason.STOP]
+    assert stops, "클램프로 손절가가 유지돼 280 종가에 발동해야"
 
 
 # --------------------------------------------------------------------------- #
