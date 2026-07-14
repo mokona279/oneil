@@ -266,9 +266,11 @@ def _atr_spike_source() -> tuple[MemSource, list[date]]:
 
 
 def test_stop_recalc_can_lower_without_clamp(cfg: Config) -> None:
-    # 현행(no_lower_recalc=false): 재계산이 손절가를 내려 280 종가에 손절 미발동.
+    # v3-4 이전(no_lower_recalc=false): 재계산이 손절가를 내려 280 종가에 손절 미발동
+    # — Q11이 봉쇄한 구멍의 재현(명시적 오버라이드로 과거 동작 고정).
     source, dates = _atr_spike_source()
-    result = BacktestEngine(source, cfg, initial_cash=1.0e8).run(
+    old_cfg = apply_overrides(cfg, {"stop.no_lower_recalc": False})
+    result = BacktestEngine(source, old_cfg, initial_cash=1.0e8).run(
         dates[0], dates[-1], symbols=["AAA"]
     )
     assert [e for e in result.events if e.event == "PYRAMID"], "2차 체결 전제"

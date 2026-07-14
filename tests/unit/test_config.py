@@ -21,7 +21,7 @@ def cfg() -> Config:
 
 
 def test_version_tag(cfg: Config) -> None:
-    assert cfg.rulebook_version == "v3-4"  # v3-3 + P1(R1·R2) 승인분
+    assert cfg.rulebook_version == "v3-5"  # v3-4 + P2(R3b·Q11) 승인분
     assert cfg.calendar_source == "index"
 
 
@@ -121,14 +121,14 @@ def test_config_is_frozen(cfg: Config) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# P2 신규 키 — R3(단계 규칙)·Q11(손절 클램프). 기본값 = 현행 동치(끔).
+# P2 신규 키 — R3(단계 규칙)·Q11(손절 클램프). P2 승인 반영(2026-07-14).
 # --------------------------------------------------------------------------- #
-def test_p2_keys_defaults_off(cfg: Config) -> None:
+def test_p2_keys_defaults(cfg: Config) -> None:
     st = cfg.base.stage
-    assert st.overlimit_weight_factor is None       # R3a 꺼짐 = 4단계+ 금지
-    assert st.reset_no_breakout_months is None      # R3b 꺼짐 = 리셋은 저점 하회뿐
-    assert st.reset_min_depth_pct == 20.0           # months가 null이라 무효
-    assert cfg.stop.no_lower_recalc is False        # Q11 꺼짐 = 현행(하향 허용)
+    assert st.overlimit_weight_factor is None       # R3a 실측 기각 = 4단계+ 금지 유지
+    assert st.reset_no_breakout_months == 12        # R3b 승인(N=12)
+    assert st.reset_min_depth_pct == 20.0
+    assert cfg.stop.no_lower_recalc is True         # Q11 승인(하향 금지)
 
 
 def test_p2_keys_omitted_default_off(tmp_path: Path) -> None:

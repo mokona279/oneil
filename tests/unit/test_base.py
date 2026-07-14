@@ -317,8 +317,10 @@ def test_stage_tracker_no_reset_before_period(cfg: Config) -> None:
 
 
 def test_stage_tracker_reset_disabled_is_bitwise_current(cfg: Config) -> None:
-    # 기본 config(months=null)에선 d·depth를 무시하고 현행과 동일하게 동작.
-    st = StageTracker(cfg)
+    # months=null(v3-4 이전 동치)에선 d·depth를 무시하고 현행과 동일하게 동작.
+    from oneil_bt.analysis.override import apply_overrides
+    off = apply_overrides(cfg, {"base.stage.reset_no_breakout_months": None})
+    st = StageTracker(off)
     st.on_breakout(D0, close=100.0, base_low=90.0, stage=3)
     st.on_bar(close=130.0, low=120.0)
     far = date(2030, 1, 1)
