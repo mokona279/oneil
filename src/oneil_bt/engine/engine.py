@@ -4,12 +4,16 @@
 계약을 따른다. 결정론(난수 없음·정렬 고정)이라 동일 입력·설정이면 동일 결과다.
 
 하루 처리 순서(세션일 d):
-    1. 대기 청산 체결       — 전일(d-1) 종가에 결정된 매도를 d 시가에 체결(§6.1).
-    2. 장중 자동스탑(대안)   — stop_fill_model=intraday_touch면 d 장중 저가로 손절 체결.
-    3. 피라미딩 2·3차       — 보유 포지션의 트리거 도달 시 d 장중 체결(시장필터 무관, Q11).
-    4. 신규 돌파 진입       — ≤d-1 게이트 통과 + d 장중 돌파. RS 내림차순·심볼 사전순 정렬.
-    5. 청산 판정(종가)      — 손절(기본)·60MA·시장방어를 d 종가로 판정 → d+1 시가 대기.
-    6. 자본곡선 기록        — d 종가 마크로 평가·노출·시장상태 스냅샷.
+    1.  대기 청산 체결      — 전일(d-1) 종가에 결정된 매도를 d 시가에 체결(§6.1).
+    1.5 대기 재진입 체결    — R4b(P4): 전일 트리거 확인분을 d 시가(+5% 상한)에 체결.
+                              시가라 같은 날 장중 돌파 진입보다 자본을 먼저 쓴다.
+    2.  장중 자동스탑(대안)  — stop_fill_model=intraday_touch면 d 장중 저가로 손절 체결.
+    3.  피라미딩 2·3차      — 보유 포지션의 트리거 도달 시 d 장중 체결(시장필터 무관, Q11).
+    4.  신규 돌파 진입      — ≤d-1 게이트 통과 + d 장중 돌파. RS 내림차순·심볼 사전순 정렬.
+    5.  청산 판정(종가)     — 손절(기본)·60MA·시장방어를 d 종가로 판정 → d+1 시가 대기.
+    5.5 재진입 판정(종가)   — R4b: 티켓별 50MA 회복 연속 카운트 갱신 → 자격·게이트 통과
+                              시 익일 시가 대기(plan/p4_reentry.md Q6).
+    6.  자본곡선 기록       — d 종가 마크로 평가·노출·시장상태 스냅샷.
 
 룩어헤드 방지:
     - 진입 게이트(트렌드·RS·시장필터)와 사이징 ATR은 직전 세션(d-1) 값을 쓴다. 돌파
@@ -22,7 +26,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 
@@ -54,6 +58,8 @@ from .context import (
     EventRecord,
     GateBreakdownRow,
     MarketContext,
+    PendingReentry,
+    ReentryTicket,
     RuleActivation,
     SymbolContext,
     TradePlan,
@@ -63,6 +69,9 @@ from .context import (
 )
 
 _PYRAMID_REASONS = (EntryReason.PYRAMID_T2, EntryReason.PYRAMID_T3)
+# R4b(P4): 재진입 자격을 부여하는 전량 청산 사유 — §6② 추세 이탈만. 손절(STOP)은
+# §9 복수 매매 금지 유지, 부분 매도(HALF·방어)는 "전량"이 아니라 자격 사건이 아니다.
+_REENTRY_GRANT_REASONS = (ExitReason.TREND_60MA_REST, ExitReason.TREND_60MA_VOLBREAK)
 
 
 @dataclass(frozen=True)
@@ -111,6 +120,8 @@ class BacktestEngine:
         self._governor: RiskGovernor | None = None
         self._plans: dict[str, TradePlan] = {}
         self._pending: list[tuple[str, ExitSignal]] = []
+        self._tickets: dict[str, ReentryTicket] = {}
+        self._pending_reentries: list[PendingReentry] = []
         self._result: BacktestResult | None = None
 
     # ------------------------------------------------------------------ #
@@ -134,6 +145,8 @@ class BacktestEngine:
         self._governor = RiskGovernor(self.cfg, self._calendar)
         self._plans = {}
         self._pending = []
+        self._tickets = {}
+        self._pending_reentries = []
         self._result = BacktestResult(
             start=start, end=end,
             initial_cash=self.initial_cash, final_cash=self.initial_cash,
@@ -147,11 +160,13 @@ class BacktestEngine:
         for d in sessions:
             prev = self._calendar.shift(d, -1)
             self._fill_pending_exits(d)
+            self._fill_pending_reentries(d)
             if self.cfg.stop.fill_model is FillModelType.INTRADAY_TOUCH:
                 self._process_intraday_stops(d)
             self._process_pyramids(d, prev)
             self._process_entries(d, prev)
             self._decide_exits(d)
+            self._decide_reentries(d)
             self._record_day(d)
 
         self._result.final_cash = self._portfolio.cash
@@ -207,6 +222,73 @@ class BacktestEngine:
             fill = self.fill_model.fill_exit(bar, order)
             self._record_sell(sc, pos, fill)
         self._pending = carry
+
+    # ------------------------------------------------------------------ #
+    # 1.5 대기 재진입 체결 (R4b, P4) — 전일 트리거 확인 → 당일 시가(+5% 상한)
+    # ------------------------------------------------------------------ #
+    def _fill_pending_reentries(self, d: date) -> None:
+        """전일 종가에 트리거가 확인된 재진입을 d 시가에 체결한다.
+
+        미체결(갭 상한 초과·슬롯/현금 부족·거버너 중단)이면 대기를 버린다 — 티켓은
+        남으므로 streak가 유지되는 한 그날 저녁(5.5)에 재확인된다. 거래정지(결측 바)
+        만 다음 세션으로 이월한다(대기 청산과 동일).
+        """
+        if not self._pending_reentries:
+            return
+        pf, gov = self._pf, self._gov
+        queue = sorted(self._pending_reentries, key=lambda p: (-p.rs, p.symbol))
+        self._pending_reentries = []
+        for p in queue:
+            ticket = self._tickets.get(p.symbol)
+            if ticket is None or p.symbol in pf.positions:
+                continue  # 자격 소멸/이미 보유(방어적) → 폐기
+            if gov.new_trades_blocked(d):
+                continue  # §7 신규 중단 — 티켓 유지, 저녁 재판정
+            sc = self._symctx[p.symbol]
+            bar = sc.prices.row(d)
+            if bar is None:
+                self._pending_reentries.append(p)  # 거래정지 → 다음 세션 이월
+                continue
+            cap_price = p.ref_price * (1.0 + self.cfg.entry.chase_limit_pct / 100.0)
+            if not pf.has_slot() or not pf.can_open(p.qty * cap_price):
+                continue  # 자본 경합 → 폐기(티켓 유지)
+            order = Order.reentry(
+                p.symbol, p.ref_price, p.qty, self.cfg.entry.chase_limit_pct
+            )
+            fill = self.fill_model.fill_entry_open(bar, order)
+            if fill is None:
+                self._event(d, p.symbol, "REENTRY_CHASE_SKIP", {
+                    "ref_price": p.ref_price, "cap": cap_price,
+                })
+                continue  # 상한 초과 갭 → 미체결(티켓 유지, 재확인 대상)
+
+            stop = sc.stop.stop_price(fill.price, p.atr)
+            pf.apply_buy(p.symbol, sc.market, fill, stop)
+            # 1차 트랜치만 — next_tranche_idx를 끝으로 시작해 피라미딩·예약이 없다.
+            self._plans[p.symbol] = TradePlan(
+                symbol=p.symbol, market=sc.market, pivot=p.ref_price,
+                base_stage=0, weight=p.weight, target_notional=p.target_notional,
+                tranche_ratios=self.cfg.entry.tranche_ratios,
+                first_fill_price=fill.price,
+                risk_per_share=max(0.0, fill.price - stop),
+                next_tranche_idx=len(self.cfg.entry.tranche_ratios),
+                total_entry_cost=fill.cost, total_entry_qty=fill.qty,
+                entry_reason=EntryReason.REENTRY_50MA,
+            )
+            consumed = self._tickets.pop(p.symbol)  # 자격 1회 = 재진입 1회(소진)
+            self._event(d, p.symbol, "REENTRY_ENTRY", {
+                "price": fill.price, "qty": fill.qty, "ref_price": p.ref_price,
+                "granted_on": str(consumed.granted_on),
+            })
+            if self._record_diag:
+                self._result.rule_activations.append(RuleActivation(
+                    d, p.symbol, "r4b_reentry_entry", {
+                        "granted_on": str(consumed.granted_on),
+                        "exit_reason": consumed.exit_reason,
+                        "streak": consumed.streak,
+                        "ref_price": p.ref_price, "price": fill.price,
+                    },
+                ))
 
     # ------------------------------------------------------------------ #
     # 2. 장중 자동스탑 (대안 모델) — 당일 저가 터치 시 당일 체결
@@ -414,6 +496,7 @@ class BacktestEngine:
 
         initial_stop = sc.stop.stop_price(fill.price, atr)
         pf.apply_buy(sc.symbol, sc.market, fill, initial_stop)
+        self._tickets.pop(sc.symbol, None)  # R4b(Q6-7): 새 베이스 돌파가 자격을 대체
         plan = TradePlan(
             symbol=sc.symbol, market=sc.market, pivot=base.pivot,
             base_stage=base.stage, weight=weight, target_notional=target_notional,
@@ -523,6 +606,71 @@ class BacktestEngine:
             plan.exiting = True
 
     # ------------------------------------------------------------------ #
+    # 5.5 재진입 판정 (R4b, P4 — 종가) → 다음 세션 시가 대기
+    # ------------------------------------------------------------------ #
+    def _decide_reentries(self, d: date) -> None:
+        """티켓별 50MA 회복 연속 카운트를 갱신하고, 트리거 확인 시 익일 대기를 건다.
+
+        판정은 전부 d 종가 확정치(≤d) — 익일 시가 체결이라 룩어헤드가 없다. 실거래
+        바가 없는 세션(거래정지)은 카운트하지 않는다(streak 유지). 거버너 중단·게이트
+        실패는 그날 대기만 차단하고 streak는 계속 간다(Q6-5).
+        """
+        rcfg = self.cfg.reentry
+        if rcfg.confirm_sessions is None or not self._tickets:
+            return
+        pf = self._pf
+        pending_syms = {p.symbol for p in self._pending_reentries}
+        equity: float | None = None  # 첫 후보에서 1회만 평가(마크 비용 절약)
+        for sym in sorted(self._tickets):
+            ticket = self._tickets[sym]
+            if sym in pf.positions:
+                continue  # 방어적 — 보유 중 티켓은 정상 흐름에선 없다
+            if d > ticket.expires_on:
+                del self._tickets[sym]  # 유효 기간 만료 → 자격 소멸(Q6-2)
+                continue
+            sc = self._symctx[sym]
+            bar = sc.prices.row(d)
+            if bar is None:
+                continue  # 실거래 바 세션만 카운트
+            ma = sc.ind.asof(f"ma{rcfg.ma}", d)
+            close = float(bar["close"])
+            if ma is None or close < ma:
+                ticket.streak = 0  # 하회(또는 MA 미확정) → 리셋(Q6-1)
+                continue
+            ticket.streak += 1
+            if ticket.streak < rcfg.confirm_sessions or sym in pending_syms:
+                continue
+            # 자격 게이트(Q6-5): 템플릿·시장필터 정상 — d 종가 확정치. + 거버너.
+            if self._gov.new_trades_blocked(d):
+                continue
+            if not sc.trend.passes(d):
+                continue
+            if self._mktctx[sc.market].filter.state_asof(d) is not MarketState.NORMAL:
+                continue
+            atr = sc.ind.asof("atr14", d)
+            if atr is None:
+                continue
+            weight = self.sizer.target_weight(close, atr)
+            if equity is None:
+                equity = pf.equity(self._marks(d))
+            target_notional = self.sizer.target_notional(equity, weight)
+            qty = self.sizer.tranche_qty(
+                equity, weight, self.cfg.entry.tranche_ratios[0], close
+            )
+            if qty <= 0:
+                continue
+            rs_val = sc.ind.asof("rs_6m", d)
+            self._pending_reentries.append(PendingReentry(
+                symbol=sym, decided_on=d, ref_price=close, atr=atr,
+                weight=weight, target_notional=target_notional, qty=qty,
+                rs=rs_val if rs_val is not None else -math.inf,
+            ))
+            self._event(d, sym, "REENTRY_TRIGGER", {
+                "ref_price": close, "ma": ma, "streak": ticket.streak,
+                "granted_on": str(ticket.granted_on),
+            })
+
+    # ------------------------------------------------------------------ #
     # 6. 자본곡선 기록
     # ------------------------------------------------------------------ #
     def _record_day(self, d: date) -> None:
@@ -575,7 +723,8 @@ class BacktestEngine:
         risk = plan.risk_per_share if plan else max(0.0, pos.entry_price - pos.stop_price)
         entry_fill = Fill(
             date=pos.entry_date, price=pos.avg_price, qty=fill.qty,
-            reason=EntryReason.BREAKOUT_T1, cost=entry_cost,
+            reason=plan.entry_reason if plan else EntryReason.BREAKOUT_T1,
+            cost=entry_cost,
         )
         closed = ClosedTrade(
             symbol=sc.symbol, market=pos.market, tranche_no=1,
@@ -594,6 +743,15 @@ class BacktestEngine:
         })
         if remaining is None:
             self._plans.pop(sc.symbol, None)
+            rcfg = self.cfg.reentry
+            if rcfg.confirm_sessions is not None and fill.reason in _REENTRY_GRANT_REASONS:
+                # R4b(Q6-7): §6② 전량 청산 → 재진입 자격 부여(심볼당 최신 1개).
+                # 카운트는 청산 체결일 당일 종가부터 기산된다(당일 5.5에서 첫 갱신).
+                self._tickets[sc.symbol] = ReentryTicket(
+                    symbol=sc.symbol, granted_on=fill.date,
+                    expires_on=fill.date + timedelta(days=rcfg.window_days or 0),
+                    exit_reason=str(fill.reason),
+                )
 
     def _event(self, d: date, sym: str, event: str, detail: dict) -> None:
         self._result.events.append(EventRecord(d, sym, event, detail))

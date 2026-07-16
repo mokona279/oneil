@@ -205,6 +205,50 @@ class QualityCfg:
 
 
 @dataclass(frozen=True)
+class ReentryCfg:
+    # R4b(Q6): 추세 복귀 재진입 — §6② 사유 전량 청산 종목이 ma(50MA)를 종가 기준
+    # confirm_sessions 거래일 연속 회복 유지하면 익일 시가 재진입(1차 트랜치만).
+    # confirm_sessions가 None이면 꺼짐(현행 비트 동치). 세부는 plan/p4_reentry.md Q6-1~7.
+    ma: int
+    confirm_sessions: int | None
+    window_months: int | None  # 청산 후 자격 유효 개월(달력일 환산). confirm 설정 시 필수
+
+    @property
+    def enabled(self) -> bool:
+        return self.confirm_sessions is not None
+
+    @property
+    def window_days(self) -> int | None:
+        # R3b(stage_tracker)와 동일 환산: 1개월 = 365.25/12 달력일.
+        if self.window_months is None:
+            return None
+        return round(self.window_months * 365.25 / 12.0)
+
+    @staticmethod
+    def from_dict(d: dict[str, Any]) -> "ReentryCfg":
+        confirm = (None if d.get("confirm_sessions") is None
+                   else int(d["confirm_sessions"]))
+        window = (None if d.get("window_months") is None
+                  else int(d["window_months"]))
+        if confirm is not None:
+            if confirm < 1:
+                raise ConfigError("reentry.confirm_sessions must be >= 1")
+            # 켜려면 유효 기간도 YAML에 있어야 한다(코드 기본값 하드코딩 금지).
+            if window is None:
+                raise ConfigError(
+                    "reentry.window_months is required when confirm_sessions is set"
+                )
+            if window < 1:
+                raise ConfigError("reentry.window_months must be >= 1")
+        # ma는 꺼짐 상태에선 읽히지 않는다 — 구 YAML(섹션 부재) 호환 기본 50.
+        return ReentryCfg(
+            ma=int(d.get("ma", 50)),
+            confirm_sessions=confirm,
+            window_months=window,
+        )
+
+
+@dataclass(frozen=True)
 class EntryCfg:
     breakout_use_intraday: bool
     chase_limit_pct: float
@@ -413,6 +457,7 @@ class Config:
     base: BaseCfg
     quality: QualityCfg
     entry: EntryCfg
+    reentry: ReentryCfg
     stop: StopCfg
     exit: ExitCfg
     sizing: SizingCfg
@@ -448,6 +493,7 @@ class Config:
             base=BaseCfg.from_dict(_req(rules, "base", "rules")),
             quality=QualityCfg.from_dict(_req(rules, "quality", "rules")),
             entry=EntryCfg.from_dict(_req(rules, "entry", "rules")),
+            reentry=ReentryCfg.from_dict(rules.get("reentry") or {}),
             stop=StopCfg.from_dict(_req(rules, "stop", "rules")),
             exit=ExitCfg.from_dict(_req(rules, "exit", "rules")),
             sizing=SizingCfg.from_dict(_req(rules, "sizing", "rules")),

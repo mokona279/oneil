@@ -21,6 +21,7 @@ class EntryReason(StrEnum):
     BREAKOUT_T1 = "BREAKOUT_T1"   # 1차 돌파 진입
     PYRAMID_T2 = "PYRAMID_T2"     # 2차 피라미딩
     PYRAMID_T3 = "PYRAMID_T3"     # 3차 피라미딩
+    REENTRY_50MA = "REENTRY_50MA" # R4b(Q6) 추세 복귀 재진입 — §6② 청산 후 50MA 회복
 
 
 class ExitReason(StrEnum):
@@ -38,6 +39,7 @@ class OrderKind(StrEnum):
 
     STOP_BUY = "STOP_BUY"        # 자동감시(스탑) 매수 — 돌파 1차
     LIMIT_BUY = "LIMIT_BUY"      # 지정가 매수 — 피라미딩 2·3차
+    MARKET_BUY = "MARKET_BUY"    # 시가 매수 — R4b 재진입 (상한부, P4)
     MARKET_SELL = "MARKET_SELL"  # 시장가 매도 — 청산 (Phase 4B)
 
 

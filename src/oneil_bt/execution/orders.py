@@ -74,6 +74,27 @@ class Order:
         )
 
     @classmethod
+    def reentry(
+        cls,
+        symbol: str,
+        ref_price: float,
+        qty: int,
+        chase_limit_pct: float,
+    ) -> "Order":
+        """R4b 재진입 시가 매수(P4): 상한 = 트리거 확인일 종가 × (1+추격한도%).
+
+        트리거가 없다 — 전일 종가에 이미 판정이 끝났고 당일 시가에 산다. 상한 초과
+        갭이면 1차 돌파와 같은 문법으로 장중 상한 복귀 체결을 허용한다(fill_entry_open).
+        """
+        return cls(
+            symbol=symbol,
+            kind=OrderKind.MARKET_BUY,
+            reason=EntryReason.REENTRY_50MA,
+            qty=qty,
+            limit_cap=ref_price * (1.0 + chase_limit_pct / 100.0),
+        )
+
+    @classmethod
     def exit(
         cls,
         symbol: str,

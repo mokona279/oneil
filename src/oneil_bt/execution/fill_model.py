@@ -89,6 +89,29 @@ class DailyBarFillModel:
         return self._buy_fill(bar, price, order)
 
     # ------------------------------------------------------------------ #
+    # 재진입 시가 매수 (R4b, P4)
+    # ------------------------------------------------------------------ #
+    def fill_entry_open(self, bar: pd.Series, order: Order) -> Fill | None:
+        """R4b 재진입: 판정 다음날(D+1) 시가 체결, 상한부(확인일 종가 +5%).
+
+        - `O ≤ cap` → 시가 체결.
+        - 갭업이 상한 초과(`O > cap`): 장중 저가가 상한까지 내려오면 `cap` 체결,
+          아니면 미체결(None) — 1차 돌파와 같은 갭 복귀 문법(§6.2).
+        """
+        cap = order.limit_cap
+        if cap is None:
+            raise ValueError("reentry order requires limit_cap")
+        o = float(bar["open"])
+        low = float(bar["low"])
+        price = o
+        if price > cap:
+            if low <= cap:
+                price = cap
+            else:
+                return None  # 추격 한도 초과 갭 → 미체결(다음 확인일 재시도)
+        return self._buy_fill(bar, price, order)
+
+    # ------------------------------------------------------------------ #
     # 피라미딩 체결
     # ------------------------------------------------------------------ #
     def fill_pyramid(self, bar: pd.Series, order: Order) -> Fill | None:

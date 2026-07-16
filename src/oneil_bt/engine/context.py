@@ -19,7 +19,7 @@ from datetime import date
 
 from ..domain.bar import PriceFrame
 from ..domain.config import Config
-from ..domain.enums import Market, MarketState
+from ..domain.enums import EntryReason, Market, MarketState
 from ..domain.trade import ClosedTrade
 from ..indicators.indicator_set import IndicatorSet
 from ..rules.base_detector import BaseDetector
@@ -118,6 +118,9 @@ class TradePlan:
     - `reserved`: 피라미딩용으로 예약해 둔 현금(available_cash에서 빠짐).
     - `risk_per_share`: 1주당 리스크(1차 체결가 − 최초 손절가). ClosedTrade R 배수 분모.
     - `exiting`: 청산(부분 포함)이 시작되면 True — 이후 피라미딩을 멈춘다.
+    - `entry_reason`: 트레이드 로그의 진입 사유. R4b 재진입은 REENTRY_50MA로 기록하며,
+      이때 `pivot`=트리거 확인일 종가(기준가), `base_stage`=0(베이스 없음),
+      `next_tranche_idx`=len(ratios)로 시작해 피라미딩이 없다.
     """
 
     symbol: str
@@ -135,6 +138,7 @@ class TradePlan:
     total_entry_cost: float = 0.0
     total_entry_qty: int = 0
     exiting: bool = False
+    entry_reason: EntryReason = EntryReason.BREAKOUT_T1
 
     @property
     def entry_cost_per_share(self) -> float:
@@ -143,6 +147,41 @@ class TradePlan:
     @property
     def complete(self) -> bool:
         return self.next_tranche_idx >= len(self.tranche_ratios)
+
+
+@dataclass
+class ReentryTicket:
+    """R4b 재진입 자격(심볼당 최신 1개, 엔진 소유) — plan/p4_reentry.md Q6.
+
+    §6② 사유(TREND_60MA_REST/VOLBREAK) 전량 청산 체결이 부여한다. `streak`는
+    청산 체결일부터 실거래 바 세션의 종가 ≥ 50MA 연속 수(하회 시 0 리셋)로,
+    confirm_sessions 도달이 트리거 확인이다. 소멸: 재진입 체결(소진)·유효 기간
+    만료·그 심볼의 새 베이스 돌파 진입(자격 대체).
+    """
+
+    symbol: str
+    granted_on: date       # 전량 청산 체결일(카운트 기산일)
+    expires_on: date       # granted_on + window_months(달력일 환산)
+    exit_reason: str       # 부여 사유(진단)
+    streak: int = 0
+
+
+@dataclass(frozen=True)
+class PendingReentry:
+    """트리거 확인(종가) → 익일 시가 체결 대기 중인 재진입 주문 파라미터.
+
+    사이징·손절 산정값(기준가·ATR)은 확인일 종가 확정치로 고정한다 — 체결일의
+    직전 세션 값이라 기존 '직전 세션' 계약과 동일(룩어헤드 없음).
+    """
+
+    symbol: str
+    decided_on: date
+    ref_price: float       # 확인일 종가 — 사이징 기준가·추격 상한 기준
+    atr: float             # 확인일 ATR(14) — 손절가 산정
+    weight: float
+    target_notional: float
+    qty: int
+    rs: float              # 동일일 다중 재진입 정렬용(RS 내림차순·심볼 사전순)
 
 
 # --------------------------------------------------------------------------- #
@@ -243,6 +282,8 @@ class RuleActivation:
                              (detail: kept, recalc).
       - "r4a_handle_entry" — 손잡이 피벗으로 성사된 신규 진입
                              (detail: pivot, struct_pivot).
+      - "r4b_reentry_entry" — 추세 복귀 재진입 체결(P4, detail: granted_on,
+                             exit_reason, streak, ref_price, price).
     골든 해시 제외(진단 채널) — 매 Phase 후보·최종 실행에서 트레이드와 조인해
     건수·손익 기여를 병기한다.
     """

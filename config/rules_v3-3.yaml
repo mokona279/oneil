@@ -66,6 +66,11 @@ entry:                            # §4 매수
   pyramid_triggers_pct: [2.5, 5]  # 2차: 1차 +2.5%, 3차: 1차 +5%
   tranche_price_cap_pct: 3        # 트리거가 +3% 상한, 초과 갭 시 스킵
 
+reentry:                          # R4b(Q6): 추세 복귀 재진입 — P4 (plan/p4_reentry.md)
+  ma: 50                          # 복귀 기준선(10주선)
+  confirm_sessions: null          # M: 종가 >= 50MA 연속 유지 거래일. null=꺼짐(현행 비트 동치)
+  window_months: null             # W: §6② 전량 청산 후 자격 유효 개월 (confirm 설정 시 필수)
+
 stop:                             # §6-①
   method: atr2x                   # atr2x | fixed_pct (Q14)
   atr_mult: 2.0
