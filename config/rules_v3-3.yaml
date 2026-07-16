@@ -9,8 +9,12 @@
 # 12-30 진입·083310 조기 손절)뿐이라 **과적합 가능성 추적 의무** — 이후 Phase 검증마다
 # 리셋·클램프 발동 건수와 손익 기여를 분리 집계해 병기하고, P5 워크포워드에서 on/off
 # 재검증한다. v3-4 재현은 reset_no_breakout_months/no_lower_recalc를 null/false로.
+# v3-6 = v3-5 + P4(R4b 추세 복귀 재진입: 50MA 종가 회복 confirm=5일 연속·자격 유효
+# window=3개월) — 2026-07-16 승인(plan/p4_reentry.md). 발동 26건·직접 +160.6R·MDD 무비용.
+# 조건: §3.3 상시 추적 편입(발동 분리 집계), Q13 스윕에 W축 편입, P5 워크포워드 on/off
+# 재검증(W가 약세장 민감축). v3-5 재현은 reentry.confirm_sessions/window_months를 null로.
 
-rulebook_version: "v3-5"          # 재현성 태그
+rulebook_version: "v3-6"          # 재현성 태그
 calendar_source: index            # 거래일 = 지수 CSV 날짜 기준
 
 trend_template:                   # §3 0단계 — 트렌드 템플릿 7조건 (AND)
@@ -66,10 +70,10 @@ entry:                            # §4 매수
   pyramid_triggers_pct: [2.5, 5]  # 2차: 1차 +2.5%, 3차: 1차 +5%
   tranche_price_cap_pct: 3        # 트리거가 +3% 상한, 초과 갭 시 스킵
 
-reentry:                          # R4b(Q6): 추세 복귀 재진입 — P4 (plan/p4_reentry.md)
+reentry:                          # R4b(Q6): 추세 복귀 재진입 — P4 승인(2026-07-16, plan/p4_reentry.md)
   ma: 50                          # 복귀 기준선(10주선)
-  confirm_sessions: null          # M: 종가 >= 50MA 연속 유지 거래일. null=꺼짐(현행 비트 동치)
-  window_months: null             # W: §6② 전량 청산 후 자격 유효 개월 (confirm 설정 시 필수)
+  confirm_sessions: 5             # M: 종가 >= 50MA 연속 유지 거래일 — 스윕 플래토 정점(5/3). null=꺼짐(v3-5 재현)
+  window_months: 3                # W: §6② 전량 청산 후 자격 유효 개월 — 6·12는 약세장 열세로 기각
 
 stop:                             # §6-①
   method: atr2x                   # atr2x | fixed_pct (Q14)

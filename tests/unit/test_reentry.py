@@ -42,11 +42,12 @@ def _reentry_cfg(cfg: Config, confirm: int = 3, window: int = 6) -> Config:
 # --------------------------------------------------------------------------- #
 # config 파싱·검증
 # --------------------------------------------------------------------------- #
-def test_yaml_default_is_off(cfg: Config) -> None:
+def test_yaml_default_is_candidate(cfg: Config) -> None:
+    # P4 승인(2026-07-16): c5w3 채택 — v3-6 기본값. v3-5 재현은 null/null.
     assert cfg.reentry.ma == 50
-    assert cfg.reentry.confirm_sessions is None
-    assert cfg.reentry.enabled is False
-    assert cfg.reentry.window_days is None
+    assert cfg.reentry.confirm_sessions == 5
+    assert cfg.reentry.window_months == 3
+    assert cfg.reentry.enabled is True
 
 
 def test_confirm_requires_window() -> None:
@@ -158,10 +159,14 @@ def test_reentry_after_60ma_full_exit(cfg: Config) -> None:
     assert result.equity_curve[-1].n_positions == 1
 
 
-def test_reentry_off_by_default_no_events(cfg: Config) -> None:
+def test_reentry_off_override_no_events(cfg: Config) -> None:
+    # null 오버라이드 = v3-5 재현 경로(코드가 아예 안 열림).
     closes, vols = _closes_and_vols()
     source, dates = _source(closes, vols)
-    result = BacktestEngine(source, cfg, initial_cash=1.0e8).run(dates[0], dates[-1])
+    off = apply_overrides(cfg, {
+        "reentry.confirm_sessions": None, "reentry.window_months": None,
+    })
+    result = BacktestEngine(source, off, initial_cash=1.0e8).run(dates[0], dates[-1])
     assert not _events(result, "REENTRY_TRIGGER")
     assert not _events(result, "REENTRY_ENTRY")
     assert not [a for a in result.rule_activations if a.rule == "r4b_reentry_entry"]
