@@ -21,7 +21,7 @@ from . import KOSDAQ_INDEX_CODE, KOSPI_INDEX_CODE
 from .env_loader import load_env_file
 from .incremental import decide_fetch, merge_incremental
 from .krx_client import KrxClient, PykrxClient
-from .meta_builder import build_meta_rows, normalize_listing_dates
+from .meta_builder import build_meta_rows, load_meta_fallback, normalize_listing_dates
 from .transform import clean_bars, normalize_index, normalize_ohlcv
 from .universe import is_common_stock, select_universe
 from .writer import write_index, write_meta, write_prices
@@ -220,11 +220,22 @@ def build_and_write_meta(
     for sym in on_disk:
         name_map.setdefault(sym, _safe_name(client, sym))
 
-    result = build_meta_rows(on_disk, name_map, ticker_to_market, listing, shares)
+    # 거래정지·상폐 절차로 당일 상장 목록에서 빠진 on-disk 심볼은 이전 meta에서 복원
+    # (2026-07-17 012510 실측 — 없으면 빈 market이 파일 전체 검증을 죽인다).
+    fallback = load_meta_fallback(out / "meta.csv")
+    result = build_meta_rows(
+        on_disk, name_map, ticker_to_market, listing, shares, fallback=fallback
+    )
+    if result.market_missing:
+        raise ValueError(
+            "market 미해결 심볼(상장 목록·이전 meta 모두 없음): "
+            + ", ".join(result.market_missing[:20])
+        )
     write_meta(result.rows, out / "meta.csv")
     return {
         "symbols": len(result.rows),
         "missing_listing_date": result.missing_listing_date,
+        "market_fallback": result.market_fallback,
     }
 
 
@@ -352,6 +363,11 @@ def _format_report(report: dict) -> str:
         lines.append(f"상장일 결측       : {len(missing)}")
         if missing:
             lines.append(f"  예: {', '.join(missing[:10])}")
+        fb = meta.get("market_fallback") or []
+        if fb:
+            lines.append(
+                f"시장 결측 대체    : {len(fb)} (이전 meta 재사용: {', '.join(fb[:10])})"
+            )
     elif "error" in meta:
         lines.append(f"메타 생성 실패    : {meta['error']}")
     if report["failed"]:
