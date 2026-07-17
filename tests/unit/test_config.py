@@ -21,7 +21,7 @@ def cfg() -> Config:
 
 
 def test_version_tag(cfg: Config) -> None:
-    assert cfg.rulebook_version == "v3-7"  # v3-6 + Q13a(자본 제약 해소) 승인분
+    assert cfg.rulebook_version == "v4.0"  # P5 워크포워드 통과 — v3-7 확정 승격
     assert cfg.calendar_source == "index"
 
 

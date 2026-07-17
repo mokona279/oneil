@@ -19,7 +19,11 @@
 # 역효과 / 5건 저표본). 조건: P5 워크포워드에 자본축·W축 재검증 편입, 잔여 병목은
 # Q13(c) 교체 규칙 별도 상정, §3.3 추적 계속. v3-6 재현은 세 키를 8/true/3으로.
 
-rulebook_version: "v3-7"          # 재현성 태그
+# v4.0 = v3-7 확정 승격 — P5 통합 워크포워드 통과(2026-07-17, plan/p5_walkforward.md).
+# 9암 연도 슬라이스 재검증: 전 축 유지(W1 포함 — 캡처→sum_r→MDD 체계 일관). 존속 의무:
+# R3b·confirm5·slots12 단일 레짐 플래그 — §3.3 추적 + F1 갱신마다 walkforward_report 재실행.
+
+rulebook_version: "v4.0"          # 재현성 태그
 calendar_source: index            # 거래일 = 지수 CSV 날짜 기준
 
 trend_template:                   # §3 0단계 — 트렌드 템플릿 7조건 (AND)
