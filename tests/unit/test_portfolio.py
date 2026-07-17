@@ -135,9 +135,9 @@ def test_apply_sell_rejects_oversell(cfg: Config) -> None:
 # --------------------------------------------------------------------------- #
 def test_slot_limit_blocks_new_open_at_max_positions(cfg: Config) -> None:
     pf = Portfolio(10_000_000, cfg)
-    for i in range(cfg.portfolio.max_positions):  # 8종목
+    for i in range(cfg.portfolio.max_positions):  # v3-7 기본 12종목
         pf.apply_buy(f"S{i}", Market.KOSPI, _buy(100.0, 10), stop_price=90.0)
-    assert pf.n_positions == 8
+    assert pf.n_positions == cfg.portfolio.max_positions
     assert pf.has_slot() is False
     assert pf.can_open(1.0) is False  # 슬롯 없음 → 현금 무관 거부
 
@@ -150,9 +150,15 @@ def test_can_open_rejects_when_cash_insufficient(cfg: Config) -> None:
 
 # --------------------------------------------------------------------------- #
 # Portfolio — 예약 현금 (피라미딩 2·3차)
+# Q13 승인(2026-07-17)으로 YAML 기본이 예약 해제 — 메커니즘 검증은 명시적 on 오버라이드.
 # --------------------------------------------------------------------------- #
-def test_reserved_cash_reduces_available_and_blocks_open(cfg: Config) -> None:
-    pf = Portfolio(100_000, cfg)
+def _cfg_reserve_on() -> Config:
+    base = Config.load(RULES, COSTS)
+    return replace(base, sizing=replace(base.sizing, reserve_pyramid_cash=True))
+
+
+def test_reserved_cash_reduces_available_and_blocks_open() -> None:
+    pf = Portfolio(100_000, _cfg_reserve_on())
     pf.reserve("A", 60_000)  # 2·3차 몫 예약
     assert pf.reserved_cash == pytest.approx(60_000)
     assert pf.available_cash == pytest.approx(40_000)
@@ -160,8 +166,8 @@ def test_reserved_cash_reduces_available_and_blocks_open(cfg: Config) -> None:
     assert pf.can_open(40_000) is True
 
 
-def test_release_restores_available_cash(cfg: Config) -> None:
-    pf = Portfolio(100_000, cfg)
+def test_release_restores_available_cash() -> None:
+    pf = Portfolio(100_000, _cfg_reserve_on())
     pf.reserve("A", 60_000)
     pf.release("A", 30_000)              # 2차 체결분 해제
     assert pf.available_cash == pytest.approx(70_000)
@@ -169,8 +175,8 @@ def test_release_restores_available_cash(cfg: Config) -> None:
     assert pf.reserved_cash == pytest.approx(0.0)
 
 
-def test_selling_out_clears_reservation(cfg: Config) -> None:
-    pf = Portfolio(100_000, cfg)
+def test_selling_out_clears_reservation() -> None:
+    pf = Portfolio(100_000, _cfg_reserve_on())
     pf.apply_buy("A", Market.KOSPI, _buy(100.0, 100), stop_price=90.0)
     pf.reserve("A", 20_000)
     pf.apply_sell("A", _sell(120.0, 100))

@@ -13,8 +13,13 @@
 # window=3개월) — 2026-07-16 승인(plan/p4_reentry.md). 발동 26건·직접 +160.6R·MDD 무비용.
 # 조건: §3.3 상시 추적 편입(발동 분리 집계), Q13 스윕에 W축 편입, P5 워크포워드 on/off
 # 재검증(W가 약세장 민감축). v3-5 재현은 reentry.confirm_sessions/window_months를 null로.
+# v3-7 = v3-6 + Q13a(자본 제약 해소: max_positions 8→12, reserve_pyramid_cash 해제,
+# reentry.window_months 3→1) — 2026-07-17 승인(plan/q13_capital.md). 캡처 61→69·수익
+# +640→+755%·MDD +0.71pp·병목 52→39. R4a 핸들·R3a 감액은 재상정 실측 후 기각(전 조합
+# 역효과 / 5건 저표본). 조건: P5 워크포워드에 자본축·W축 재검증 편입, 잔여 병목은
+# Q13(c) 교체 규칙 별도 상정, §3.3 추적 계속. v3-6 재현은 세 키를 8/true/3으로.
 
-rulebook_version: "v3-6"          # 재현성 태그
+rulebook_version: "v3-7"          # 재현성 태그
 calendar_source: index            # 거래일 = 지수 CSV 날짜 기준
 
 trend_template:                   # §3 0단계 — 트렌드 템플릿 7조건 (AND)
@@ -48,12 +53,12 @@ base:                             # §5 베이스 규칙
   stage:
     step_up_close_gain_pct: 20    # 유효돌파 후 +20% 상승 뒤 베이스 = 단계+1
     max_stage: 3                  # 1~3 허용, 4+ 금지(overlimit_weight_factor로 감액 허용 가능)
-    overlimit_weight_factor: null # R3a(개선계획 Q5a): 4단계+ 감액 진입 — P2 실측 기각(자본 경합), Q13 해소 후 재상정. null=금지
+    overlimit_weight_factor: null # R3a(개선계획 Q5a): 4단계+ 감액 진입 — P2 기각 → Q13 재상정에서도 재기각(2026-07-17, 발동 5건 저표본·MDD +1.4pp). null=금지
     reset_no_breakout_months: 12  # R3b(Q5b): 12개월 무돌파+깊이 20%+ 새 베이스 → 단계 1 리셋 — P2 승인(2026-07-14, 과적합 추적 조건부)
     reset_min_depth_pct: 20       # R3b 리셋 인정 최소 베이스 깊이(%)
-  handle:                         # R4a(Q10): 컵위드핸들 손잡이 피벗 — P3 실측 후 null-keep 결정(2026-07-14, plan/p3_handle.md)
-    min_sessions: null            # 이득이 자본경합 나비효과(핸들 9.5년 1회 발동)라 Q13 해소 후 재스윕. null=현행(절대 고점 피벗)
-    max_depth_pct: null           # 후보값(재스윕 대비): min_sessions=20 / max_depth_pct=12 (out/p3/candidate_handle20)
+  handle:                         # R4a(Q10): 컵위드핸들 손잡이 피벗 — P3 null-keep → Q13 재상정 실측 후 기각(2026-07-17, plan/q13_capital.md)
+    min_sessions: null            # 자본 완화 후에도 전 조합 역효과(수익 -43~-51pp·캡처 -1) — 순수 엣지 음(-). null=현행(절대 고점 피벗)
+    max_depth_pct: null           # (기각된 후보값 기록: min_sessions=20 / max_depth_pct=12, out/p3/candidate_handle20)
 
 quality:                          # §5 품질요건 (전부 충족)
   atr_le_pivot_pct: 10            # 2*ATR <= 피벗*10%
@@ -73,7 +78,7 @@ entry:                            # §4 매수
 reentry:                          # R4b(Q6): 추세 복귀 재진입 — P4 승인(2026-07-16, plan/p4_reentry.md)
   ma: 50                          # 복귀 기준선(10주선)
   confirm_sessions: 5             # M: 종가 >= 50MA 연속 유지 거래일 — 스윕 플래토 정점(5/3). null=꺼짐(v3-5 재현)
-  window_months: 3                # W: §6② 전량 청산 후 자격 유효 개월 — 6·12는 약세장 열세로 기각
+  window_months: 1                # W: §6② 전량 청산 후 자격 유효 개월 — Q13 재검증으로 3→1(2026-07-17), 6·12는 약세장 열세로 기각
 
 stop:                             # §6-①
   method: atr2x                   # atr2x | fixed_pct (Q14)
@@ -100,10 +105,10 @@ sizing:                           # §1
   risk_per_trade_pct: 1           # 참고(공식이 자동 보장)
   max_weight_pct: 20              # 1종목 상한
   min_weight_pct: null            # 하한 없음
-  reserve_pyramid_cash: true      # 2·3차 자금 현금 예약 (Q13)
+  reserve_pyramid_cash: false     # 2·3차 예약 해제 — Q13 승인(2026-07-17): 예약은 거의 무발동 보험, 해제 시 피라미딩 위축 없음(§4.3 판독 4)
 
 portfolio:                        # §1 / §3.10
-  max_positions: 8
+  max_positions: 12               # Q13 승인(2026-07-17): 8→12 — 캡처 +8, MDD +0.71pp(가드레일 내)
   min_positions_soft: 5           # 강제 아님
 
 market_filter:                    # §2

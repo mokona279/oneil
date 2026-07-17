@@ -222,6 +222,24 @@ reserve_pyramid_cash true→false, reentry.window_months 3→1} — 규칙서 §
 ② 잔여 병목(39종목·하이닉스 6/5)은 Q13 (c) 교체 규칙 설계 문서로 별도 상정 여부
 결정, ③ §3.3 발동 추적 계속(R4b W1 13건 재계측·R3b 1건 감소 주시).
 
-## 6. 결정 (승인 후 기입)
+## 6. 결정 (2026-07-17 사용자 승인)
 
-(대기)
+**후보 B 채택 — rulebook v3-7** (`config/rules_v3-3.yaml` 반영):
+
+- `portfolio.max_positions`: 8 → **12**
+- `sizing.reserve_pyramid_cash`: true → **false**
+- `reentry.window_months`: 3 → **1** (P4 W=3의 재검증 변경 — P4 승인 조건 ③ 이행)
+- `sizing.max_weight_pct` 20 유지, R4a·R3a는 null 유지(기각 종결)
+
+반영 내역: 규칙서 v4 초안 §1(보유 종목 수 5~12·예약 해제 문언)·§4(재진입 자격
+1개월·손잡이 기각 확정)·변경점 7 신설, 개선계획 §5(Q13a 확정·Q10a/Q5a 기각 종결·
+미확정 잔여 갱신)·헤더 요약, progress.md Q13 행. 기본값 의존 테스트 5건 갱신
+(test_config 버전 태그, test_reentry W=1, test_portfolio 슬롯 파라메트릭·예약 on
+오버라이드 3건), **골든 다이제스트 불변**(example 데이터가 슬롯·예약·자격 기간에
+둔감), 유닛+통합 **320개 green**. 대안 A(캡처 최대 74)·C(보수)·D(수익 최대) 및
+현행 유지 병기 후 권고안 B 수용.
+
+**승인 조건**: ① P5 워크포워드에 자본축(reserve·slots)·W축 on/off 재검증 편입
+(기존 P2·P4 조건과 통합 실행) ② 잔여 병목(39종목·하이닉스 25-06-05)은 **Q13(c)
+교체 규칙** 설계 문서로 별도 상정 여부 결정 ③ §3.3 발동 추적 계속 — R4b W1 체제
+13건 재계측·R3b 리셋 1건 감소 주시. v3-6 재현 = 세 키를 8/true/3으로.

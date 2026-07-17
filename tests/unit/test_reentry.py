@@ -43,10 +43,11 @@ def _reentry_cfg(cfg: Config, confirm: int = 3, window: int = 6) -> Config:
 # config 파싱·검증
 # --------------------------------------------------------------------------- #
 def test_yaml_default_is_candidate(cfg: Config) -> None:
-    # P4 승인(2026-07-16): c5w3 채택 — v3-6 기본값. v3-5 재현은 null/null.
+    # P4 승인(2026-07-16): confirm=5. Q13 승인(2026-07-17): W 3→1 — v3-7 기본값.
+    # v3-5 재현은 null/null.
     assert cfg.reentry.ma == 50
     assert cfg.reentry.confirm_sessions == 5
-    assert cfg.reentry.window_months == 3
+    assert cfg.reentry.window_months == 1
     assert cfg.reentry.enabled is True
 
 
