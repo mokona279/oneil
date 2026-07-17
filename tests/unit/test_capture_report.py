@@ -42,6 +42,7 @@ FUNNEL_DF = pd.DataFrame(
         breakout=[3, 2, 0],  # 000333은 돌파 자체가 없었다
         gate_trend_ok=[3, 2, 0],
         gate_rs_ok=[3, 0, 0],  # 000222는 RS 게이트에서 전멸
+        gate_rs_rank_ok=[3, 0, 0],  # Q14 꺼짐 가정 — breakout과 동일(§ 캡처 리포트 불변성)
         gate_market_ok=[3, 0, 0],
         gate_quality_ok=[2, 0, 0],
         gates_all_ok=[2, 0, 0],

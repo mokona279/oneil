@@ -310,3 +310,67 @@ def test_flat_market_no_trades_preserves_cash(cfg: Config) -> None:
     assert not result.trades
     assert result.final_equity == pytest.approx(5.0e7)
     assert all(rec.market_states[Market.KOSPI] in MarketState for rec in result.equity_curve)
+
+
+# --------------------------------------------------------------------------- #
+# Q14(plan/q14_rs_rank.md) — 전시장 RS 백분위 랭크 게이트
+# --------------------------------------------------------------------------- #
+def _rank_gate_source() -> tuple[MemSource, list[date]]:
+    """RS(6M)가 뚜렷이 다른 4종목 — peak(상승 목표가)이 클수록 상승폭이 커 RS가 높다.
+
+    베이스 형태(우상향 → 얕은 다짐 → 돌파)는 `_breakout_closes`와 동일하게 피벗
+    기준 절대 간격(피벗-5 다짐 / 피벗+5 돌파 / 피벗+8~+60 후속)을 유지한다 — peak=300
+    이면 `_breakout_closes(300, 295)`와 완전히 같은 값이라 검증된 돌파 메커니즘을
+    그대로 재사용한다. peak을 바꿔도 추격 상한(5%)·품질 게이트(전부 %상대)는 동일하게
+    통과하고, 126일 수익률(rs_6m)만 peak에 비례해 갈린다.
+    """
+    peaks = {"S1": 220.0, "S2": 280.0, "S3": 340.0, "S4": 400.0}
+    dates = business_dates("2019-01-01", N)
+
+    def closes_for(peak: float) -> list[float]:
+        base_px = peak - 5.0
+        up = list(np.linspace(100.0, peak, UPTREND))
+        base = [base_px + (2.0 if i % 2 == 0 else -2.0) for i in range(BASE)]
+        tail = [peak + 5.0] + list(np.linspace(peak + 8.0, peak + 60.0, TAIL - 1))
+        return up + base + tail
+
+    vols = _breakout_volumes()
+    values = [2.0e10] * N
+    frames: dict[str, PriceFrame] = {}
+    metas: dict[str, SymbolMeta] = {}
+    for sym, peak in peaks.items():
+        df = ohlcv_frame(dates, closes_for(peak), vols, values=values)
+        frames[sym] = PriceFrame(sym, df)
+        metas[sym] = SymbolMeta(sym, sym, Market.KOSPI, None, None)
+
+    index_close = list(np.linspace(100.0, 150.0, N))
+    index = PriceFrame("KOSPI", ohlcv_frame(dates, index_close, 0.0))
+    return MemSource(frames, metas, {Market.KOSPI: index}), dates
+
+
+def test_rs_rank_gate_off_matches_baseline(cfg: Config) -> None:
+    # rank_top_pct=None(기본) — 랭크와 무관하게 전 종목이 게이트를 통과해야 한다.
+    source, dates = _rank_gate_source()
+    result = BacktestEngine(source, cfg, initial_cash=1.0e9).run(dates[0], dates[-1])
+    for sym in ("S1", "S2", "S3", "S4"):
+        f = result.entry_funnel[sym]
+        assert f.gate_rs_rank_ok == f.breakout
+    entered = {e.symbol for e in result.events if e.event == "ENTRY"}
+    assert {"S1", "S2", "S3", "S4"} <= entered
+
+
+def test_rs_rank_gate_blocks_low_percentile_symbol(cfg: Config) -> None:
+    # 상위 50%만 진입 — 4종목 중 최하위(S1, RS 랭크 25%)는 막히고 최상위(S4, 100%)는 통과.
+    source, dates = _rank_gate_source()
+    over = apply_overrides(cfg, {"rs.rank_top_pct": 50})
+    result = BacktestEngine(source, over, initial_cash=1.0e9).run(dates[0], dates[-1])
+
+    low = result.entry_funnel["S1"]
+    assert low.breakout > 0
+    assert low.gate_rs_rank_ok < low.breakout
+    assert not [e for e in result.events if e.event == "ENTRY" and e.symbol == "S1"]
+
+    high = result.entry_funnel["S4"]
+    assert high.breakout > 0
+    assert high.gate_rs_rank_ok == high.breakout
+    assert [e for e in result.events if e.event == "ENTRY" and e.symbol == "S4"]

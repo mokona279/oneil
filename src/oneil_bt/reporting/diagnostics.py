@@ -23,12 +23,12 @@ from .writer import write_csv
 
 ENTRY_FUNNEL_HEADER = (
     "symbol", "sessions", "held", "shopped", "base_present", "stage_ok",
-    "breakout", "gate_trend_ok", "gate_rs_ok", "gate_market_ok",
+    "breakout", "gate_trend_ok", "gate_rs_ok", "gate_rs_rank_ok", "gate_market_ok",
     "gate_quality_ok", "gates_all_ok", "entered",
 )
 GATE_BREAKDOWN_HEADER = (
     "date", "symbol", "stage", "depth_pct", "weeks_elapsed", "pivot",
-    "trend_ok", "rs_ok", "market_ok", "overheat_ok", "atr_ok",
+    "trend_ok", "rs_ok", "rs_rank_ok", "market_ok", "overheat_ok", "atr_ok",
     "contraction_ok", "dryup_ok", "all_pass", "n_failed",
 )
 BASE_STAGE_HEADER = (
@@ -58,8 +58,8 @@ def write_entry_funnel(result: BacktestResult, path: Path | str) -> None:
         f = result.entry_funnel[sym]
         rows.append([
             sym, sessions, f.held, f.shopped, f.base_present, f.stage_ok,
-            f.breakout, f.gate_trend_ok, f.gate_rs_ok, f.gate_market_ok,
-            f.gate_quality_ok, f.gates_all_ok, f.entered,
+            f.breakout, f.gate_trend_ok, f.gate_rs_ok, f.gate_rs_rank_ok,
+            f.gate_market_ok, f.gate_quality_ok, f.gates_all_ok, f.entered,
         ])
     write_csv(path, ENTRY_FUNNEL_HEADER, rows)
 
@@ -70,8 +70,8 @@ def write_gate_breakdown(result: BacktestResult, path: Path | str) -> None:
         [
             r.date.isoformat(), r.symbol, r.stage, _num(r.depth_pct),
             _num(r.weeks_elapsed), _num(r.pivot),
-            _b(r.trend_ok), _b(r.rs_ok), _b(r.market_ok), _b(r.overheat_ok),
-            _b(r.atr_ok), _b(r.contraction_ok), _b(r.dryup_ok),
+            _b(r.trend_ok), _b(r.rs_ok), _b(r.rs_rank_ok), _b(r.market_ok),
+            _b(r.overheat_ok), _b(r.atr_ok), _b(r.contraction_ok), _b(r.dryup_ok),
             _b(r.all_pass), r.n_failed,
         ]
         for r in result.gate_breakdown

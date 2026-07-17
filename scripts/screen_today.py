@@ -34,12 +34,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import pandas as pd
+
 from oneil_bt.data.csv_source import CsvDataSource
 from oneil_bt.data.metadata import MetaRepository
 from oneil_bt.domain.config import Config
 from oneil_bt.domain.enums import Market
 from oneil_bt.domain.trade import Position
 from oneil_bt.engine.context import build_market_context, build_symbol_context
+from oneil_bt.indicators.relative_strength import RelativeStrength
+from oneil_bt.indicators.rs_rank import build_rs_rank_table, rank_pct_asof
 from oneil_bt.portfolio.position_sizer import PositionSizer
 
 
@@ -179,6 +183,33 @@ def main() -> int:
     max_pos = cfg.portfolio.max_positions
     remaining_slots = max(0, max_pos - len(holdings))
 
+    # --- Q14(plan/q14_rs_rank.md §6): RS 랭크 게이트 켜졌을 때만 1차 패스 ---
+    # 가격은 캐시되므로(CsvDataSource) 아래 본 루프의 2차 로드는 사실상 무비용.
+    # 랭크 산식은 엔진과 동일한 공유 모듈(indicators/rs_rank.py)만 쓴다(이중 구현 금지).
+    rs_rank_table = None
+    if cfg.rs.rank_top_pct is not None:
+        cal_ts = pd.Timestamp(L)
+        calendar_idx = None
+        for m in mkt:
+            idx = mkt[m].index_prices.df.index
+            idx = idx[idx <= cal_ts]
+            calendar_idx = idx if calendar_idx is None else calendar_idx.union(idx)
+        calendar_idx = calendar_idx.sort_values()
+        rs_calc = RelativeStrength(cfg.rs.lookback_days, cfg.rs.method)
+        rs_by_symbol: dict[str, pd.Series] = {}
+        market_by_symbol: dict[str, Market] = {}
+        for sym in source.symbols():
+            meta = source.meta(sym)
+            m = meta.market
+            if m not in mkt:
+                continue
+            prices = source.load_prices(sym)
+            rs_by_symbol[sym] = rs_calc.compute(prices, mkt[m].index_prices)
+            market_by_symbol[sym] = m
+        rs_rank_table = build_rs_rank_table(
+            rs_by_symbol, calendar_idx, market_by_symbol, cfg.rs.rank_scope
+        )
+
     # --- 전 종목 스크리닝 ---
     chase = cfg.entry.chase_limit_pct / 100.0
     vol_mult = cfg.entry.breakout_volume_mult
@@ -208,10 +239,17 @@ def main() -> int:
         pivot = base.pivot
         trend_ok = sc.trend.passes(L)
         rs_ok = sc.rs.passes(L)
+        if rs_rank_table is not None:
+            rs_rank_pct = rank_pct_asof(rs_rank_table, sym, L)
+            rs_rank_ok = (rs_rank_pct is not None
+                          and rs_rank_pct >= 1 - cfg.rs.rank_top_pct / 100.0)
+        else:
+            rs_rank_pct = None
+            rs_rank_ok = True
         market_ok = mkt[m].filter.new_entry_allowed(L)
         q = sc.quality.passes(L, base)
         broke = sc.detector.is_breakout(L, base)
-        all_gate = trend_ok and rs_ok and market_ok and q.passed
+        all_gate = trend_ok and rs_ok and rs_rank_ok and market_ok and q.passed
 
         atr = sc.ind.asof("atr14", L)
         vol_ma20 = sc.ind.asof("vol_ma20", L)
@@ -232,7 +270,7 @@ def main() -> int:
         else:
             bucket = "4_FORMING"
 
-        rows.append({
+        row = {
             "symbol": sym, "name": meta.name, "market": m.name,
             "held": int(sym in holdings), "bucket": bucket, "all_gate": int(all_gate),
             "trend": int(trend_ok), "rs": int(rs_ok), "market_ok": int(market_ok),
@@ -254,7 +292,12 @@ def main() -> int:
             "stage": base.stage, "depth_pct": round(base.depth_pct, 1),
             "tier": base.tier, "weeks": round(base.weeks_elapsed, 1),
             "handle": int(base.handle),
-        })
+        }
+        if rs_rank_table is not None:
+            # Q14 — 켜져 있을 때만 컬럼 추가(off면 산출물 비트 동일 유지).
+            row["rs_rank"] = int(rs_rank_ok)
+            row["rs_rank_pct"] = round(rs_rank_pct * 100, 1) if rs_rank_pct is not None else ""
+        rows.append(row)
 
     rows.sort(key=lambda r: (-r["all_gate"], r["bucket"], abs(r["gap_to_pivot_pct"])))
 

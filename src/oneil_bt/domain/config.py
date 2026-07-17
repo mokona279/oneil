@@ -87,12 +87,25 @@ class OverheatCfg:
 class RsCfg:
     lookback_days: int
     method: str
+    # Q14(plan/q14_rs_rank.md §3): 전시장 RS 백분위 랭크 게이트 — 상위 rank_top_pct%만
+    # 진입 허용. None이면 꺼짐(기본, 현행 비트 동치). rank_scope는 랭크 모집단 범위.
+    rank_top_pct: float | None
+    rank_scope: str
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> "RsCfg":
+        rank_top_pct = (None if d.get("rank_top_pct") is None
+                        else float(d["rank_top_pct"]))
+        rank_scope = str(d.get("rank_scope", "all"))
+        if rank_top_pct is not None and not (0 < rank_top_pct < 100):
+            raise ConfigError("rs.rank_top_pct must satisfy 0 < x < 100")
+        if rank_scope not in ("all", "market"):
+            raise ConfigError("rs.rank_scope must be one of 'all', 'market'")
         return RsCfg(
             lookback_days=int(_req(d, "lookback_days", "rs")),
             method=str(_req(d, "method", "rs")),
+            rank_top_pct=rank_top_pct,
+            rank_scope=rank_scope,
         )
 
 

@@ -43,6 +43,8 @@ overheating:                      # §3 과열 제외 / §5 품질1
 rs:                               # §3 1단계 상대강도
   lookback_days: 126              # 6개월
   method: return_diff             # 종목 6M수익 - 지수 6M수익 > 0 (Q5)
+  rank_top_pct: null   # Q14 — 전시장 RS 백분위 상위 X%만 진입(스윕 전 기본 off)
+  rank_scope: all      # all=전시장 통합 | market=시장별(KOSPI/KOSDAQ)
 
 base:                             # §5 베이스 규칙
   depth_tiers:

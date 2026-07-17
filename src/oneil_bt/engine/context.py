@@ -240,6 +240,7 @@ class EntryFunnel:
     breakout: int = 0        # + 당일 피벗 돌파(= 진입 '기회'일)
     gate_trend_ok: int = 0   # 기회일 중 트렌드템플릿 통과
     gate_rs_ok: int = 0
+    gate_rs_rank_ok: int = 0  # Q14: 전시장 RS 백분위 랭크(꺼짐이면 항상 breakout과 동일)
     gate_market_ok: int = 0
     gate_quality_ok: int = 0
     gates_all_ok: int = 0    # 전 게이트 통과(= 진입 후보)
@@ -262,6 +263,7 @@ class GateBreakdownRow:
     pivot: float
     trend_ok: bool
     rs_ok: bool
+    rs_rank_ok: bool      # Q14: 전시장 RS 백분위 랭크(꺼짐이면 항상 True)
     market_ok: bool
     overheat_ok: bool     # 과열 아님
     atr_ok: bool

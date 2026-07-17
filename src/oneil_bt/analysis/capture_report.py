@@ -32,10 +32,12 @@ CAPTURE_REPORT_HEADER = (
 )
 
 # entry_funnel.csv의 깔때기 순서(잔존 카운트) — 처음 0이 된 필드가 병목이다.
+# gate_rs_rank_ok(Q14)는 gate_rs_ok 뒤에 삽입 — 꺼지면(rank_top_pct=None) 항상
+# breakout과 같아 병목 라벨은 불변이다(plan/q14_rs_rank.md Q14-5).
 _FUNNEL_ORDER = (
     "shopped", "base_present", "stage_ok", "breakout",
-    "gate_trend_ok", "gate_rs_ok", "gate_market_ok", "gate_quality_ok",
-    "gates_all_ok",
+    "gate_trend_ok", "gate_rs_ok", "gate_rs_rank_ok", "gate_market_ok",
+    "gate_quality_ok", "gates_all_ok",
 )
 
 MULTIPLE_TIERS = (2.0, 3.0, 4.0, 5.0)

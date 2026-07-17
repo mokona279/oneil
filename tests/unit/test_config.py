@@ -206,3 +206,52 @@ def test_p3_handle_requires_depth_and_positive(tmp_path: Path) -> None:
         bad.write_text(yaml.safe_dump(data), encoding="utf-8")
         with pytest.raises(ConfigError):
             Config.load(bad, COSTS)
+
+
+# --------------------------------------------------------------------------- #
+# Q14 신규 키 — 전시장 RS 백분위 랭크 게이트(plan/q14_rs_rank.md §3). 기본 null=off.
+# --------------------------------------------------------------------------- #
+def test_q14_rank_defaults_off(cfg: Config) -> None:
+    # 체크인된 YAML 기본값 — 스윕 전 off.
+    assert cfg.rs.rank_top_pct is None
+    assert cfg.rs.rank_scope == "all"
+
+
+def test_q14_rank_keys_omitted_default_off(tmp_path: Path) -> None:
+    # 키 자체가 없는 구(舊) YAML도 로드된다(하위호환) — 끔·"all"로.
+    import yaml
+
+    data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+    data["rs"].pop("rank_top_pct", None)
+    data["rs"].pop("rank_scope", None)
+    old = tmp_path / "rules.yaml"
+    old.write_text(yaml.safe_dump(data), encoding="utf-8")
+    cfg = Config.load(old, COSTS)
+    assert cfg.rs.rank_top_pct is None
+    assert cfg.rs.rank_scope == "all"
+
+
+def test_q14_rank_invalid_values_raise(tmp_path: Path) -> None:
+    import yaml
+
+    for patch in (
+        {"rank_top_pct": 0},
+        {"rank_top_pct": 100},
+        {"rank_top_pct": 150},
+        {"rank_scope": "foo"},
+    ):
+        data = yaml.safe_load(RULES.read_text(encoding="utf-8"))
+        data["rs"].update(patch)
+        bad = tmp_path / "rules.yaml"
+        bad.write_text(yaml.safe_dump(data), encoding="utf-8")
+        with pytest.raises(ConfigError):
+            Config.load(bad, COSTS)
+
+
+def test_q14_rank_top_pct_override_round_trips(cfg: Config) -> None:
+    # apply_overrides의 점 경로("rs.rank_top_pct")가 자동으로 동작해야 스윕 하니스가 쓸 수 있다.
+    from oneil_bt.analysis.override import apply_overrides
+
+    over = apply_overrides(cfg, {"rs.rank_top_pct": 20})
+    assert over.rs.rank_top_pct == 20
+    assert cfg.rs.rank_top_pct is None  # 원본 불변

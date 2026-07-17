@@ -43,10 +43,12 @@ def test_funnel_is_monotone_and_covers_universe(result, source) -> None:
         assert f.base_present <= f.shopped
         assert f.stage_ok <= f.base_present
         assert f.breakout <= f.stage_ok
-        for g in (f.gate_trend_ok, f.gate_rs_ok, f.gate_market_ok, f.gate_quality_ok):
+        for g in (f.gate_trend_ok, f.gate_rs_ok, f.gate_rs_rank_ok,
+                  f.gate_market_ok, f.gate_quality_ok):
             assert g <= f.breakout
         assert f.gates_all_ok <= min(
-            f.gate_trend_ok, f.gate_rs_ok, f.gate_market_ok, f.gate_quality_ok
+            f.gate_trend_ok, f.gate_rs_ok, f.gate_rs_rank_ok,
+            f.gate_market_ok, f.gate_quality_ok
         )
         assert f.entered <= f.gates_all_ok
 
@@ -65,7 +67,7 @@ def test_gate_breakdown_consistent(result) -> None:
     )
     for r in result.gate_breakdown:
         assert r.all_pass == (r.n_failed == 0)
-        assert 0 <= r.n_failed <= 7
+        assert 0 <= r.n_failed <= 8  # Q14: 게이트 4→5종(rs_rank_ok 추가)
     # all_pass 행 수 == 후보(=BREAKOUT_CANDIDATE) 수.
     n_pass = sum(1 for r in result.gate_breakdown if r.all_pass)
     assert n_pass == sum(f.gates_all_ok for f in result.entry_funnel.values())

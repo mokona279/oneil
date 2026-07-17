@@ -16,8 +16,8 @@
     6.  자본곡선 기록       — d 종가 마크로 평가·노출·시장상태 스냅샷.
 
 룩어헤드 방지:
-    - 진입 게이트(트렌드·RS·시장필터)와 사이징 ATR은 직전 세션(d-1) 값을 쓴다. 돌파
-      판정만 d 장중 고가를 본다(돌파는 장중, §6.1).
+    - 진입 게이트(트렌드·RS·RS랭크·시장필터)와 사이징 ATR은 직전 세션(d-1) 값을 쓴다.
+      돌파 판정만 d 장중 고가를 본다(돌파는 장중, §6.1).
     - 베이스 구조·품질은 컴포넌트 내부에서 ≤d-1로 확정된다.
     - 청산 판정은 d 종가, 체결은 d+1 시가(기본 손절 모델).
 """
@@ -44,6 +44,7 @@ from ..domain.trade import ClosedTrade, Fill, Position
 from ..execution.cost_model import CostModel
 from ..execution.fill_model import DailyBarFillModel
 from ..execution.orders import Order
+from ..indicators.rs_rank import build_rs_rank_table, rank_pct_asof
 from ..portfolio.portfolio import Portfolio
 from ..portfolio.position_sizer import PositionSizer
 from ..portfolio.risk_governor import RiskGovernor
@@ -76,20 +77,23 @@ _REENTRY_GRANT_REASONS = (ExitReason.TREND_60MA_REST, ExitReason.TREND_60MA_VOLB
 
 @dataclass(frozen=True)
 class GateResult:
-    """진입 게이트 4종 개별 판정(트렌드·RS·시장·베이스품질). 관찰·진단용.
+    """진입 게이트 5종 개별 판정(트렌드·RS·RS랭크·시장·베이스품질). 관찰·진단용.
 
-    `passed`는 네 게이트 AND로, 리팩터 전 `_entry_gates`의 bool과 동치다(단락만
-    제거). 품질은 세부 4요건을 담은 `QualityResult`를 그대로 보관한다.
+    `passed`는 다섯 게이트 AND로, 리팩터 전 `_entry_gates`의 bool과 동치다(단락만
+    제거). 품질은 세부 4요건을 담은 `QualityResult`를 그대로 보관한다. `rs_rank_ok`는
+    Q14 게이트가 꺼져 있으면(rs.rank_top_pct=None) 항상 True — 골든 불변 조건.
     """
 
     trend_ok: bool
     rs_ok: bool
+    rs_rank_ok: bool
     market_ok: bool
     quality: QualityResult
 
     @property
     def passed(self) -> bool:
-        return self.trend_ok and self.rs_ok and self.market_ok and self.quality.passed
+        return (self.trend_ok and self.rs_ok and self.rs_rank_ok
+                and self.market_ok and self.quality.passed)
 
 
 class BacktestEngine:
@@ -114,6 +118,8 @@ class BacktestEngine:
         self._symctx: dict[str, SymbolContext] = {}
         self._mktctx: dict[Market, MarketContext] = {}
         self._calendar: TradingCalendar | None = None
+        # Q14: 전시장 RS 백분위 랭크 테이블(날짜×심볼). 꺼짐(rank_top_pct=None)이면 None.
+        self._rs_rank_pct: pd.DataFrame | None = None
 
         # 러닝 상태 (run 1회당 초기화)
         self._portfolio: Portfolio | None = None
@@ -199,6 +205,19 @@ class BacktestEngine:
         self._calendar = TradingCalendar.from_index(
             markets[cal_market].index_prices.df.index  # type: ignore[arg-type]
         )
+
+        # Q14(plan/q14_rs_rank.md §3): 켜져 있으면 RS 랭크 테이블을 조합당 1회 구축.
+        # 캘린더는 run()의 세션 루프와 같은 축(TradingCalendar 전체 세션)을 쓴다 —
+        # as-of 조회만 하므로 start/end로 자를 필요가 없다.
+        if self.cfg.rs.rank_top_pct is not None:
+            rs_by_symbol = {sym: sc.ind.rs_6m for sym, sc in self._symctx.items()}
+            market_by_symbol = {sym: sc.market for sym, sc in self._symctx.items()}
+            calendar_index = pd.DatetimeIndex(pd.to_datetime(self._calendar.sessions))
+            self._rs_rank_pct = build_rs_rank_table(
+                rs_by_symbol, calendar_index, market_by_symbol, self.cfg.rs.rank_scope
+            )
+        else:
+            self._rs_rank_pct = None
 
     # ------------------------------------------------------------------ #
     # 1. 대기 청산 체결 (전일 결정 → 당일 시가)
@@ -404,6 +423,7 @@ class BacktestEngine:
                 f.breakout += 1
                 f.gate_trend_ok += int(gates.trend_ok)
                 f.gate_rs_ok += int(gates.rs_ok)
+                f.gate_rs_rank_ok += int(gates.rs_rank_ok)
                 f.gate_market_ok += int(gates.market_ok)
                 f.gate_quality_ok += int(gates.quality.passed)
                 self._record_gate_row(d, sym, base, gates)
@@ -433,14 +453,24 @@ class BacktestEngine:
     def _entry_gates(
         self, sc: SymbolContext, d: date, prev: date, base: Base
     ) -> GateResult:
-        """진입 게이트 4종(트렌드·RS·시장필터·베이스품질, 모두 ≤d-1 기준).
+        """진입 게이트 5종(트렌드·RS·RS랭크·시장필터·베이스품질, 모두 ≤d-1 기준).
 
-        단락 없이 넷 다 평가해 진단(어느 게이트가 막았는지)에 쓴다. `passed`는
+        단락 없이 다섯 다 평가해 진단(어느 게이트가 막았는지)에 쓴다. `passed`는
         리팩터 전 bool(전부 통과)과 동치다 — 순수 판정이라 순서·부작용 없음.
+        rs_rank_ok는 Q14(plan/q14_rs_rank.md §3) — 테이블이 없으면(꺼짐) 항상 True,
+        있으면 prev 시점 백분위가 상위 rank_top_pct% 컷을 넘어야 True.
         """
+        rank_table = self._rs_rank_pct
+        if rank_table is None:
+            rs_rank_ok = True
+        else:
+            pct = rank_pct_asof(rank_table, sc.symbol, prev)
+            cutoff = 1.0 - self.cfg.rs.rank_top_pct / 100.0
+            rs_rank_ok = pct is not None and pct >= cutoff
         return GateResult(
             trend_ok=sc.trend.passes(prev),
             rs_ok=sc.rs.passes(prev),
+            rs_rank_ok=rs_rank_ok,
             market_ok=self._mktctx[sc.market].filter.new_entry_allowed(d),
             quality=sc.quality.passes(d, base),
         )
@@ -450,12 +480,13 @@ class BacktestEngine:
     ) -> None:
         """돌파(기회)일 1건의 게이트 개별 판정을 진단 로그에 남긴다."""
         q = gates.quality
-        bools = (gates.trend_ok, gates.rs_ok, gates.market_ok,
+        bools = (gates.trend_ok, gates.rs_ok, gates.rs_rank_ok, gates.market_ok,
                  q.not_overheated, q.atr_ok, q.contraction_ok, q.dryup_ok)
         self._result.gate_breakdown.append(GateBreakdownRow(
             date=d, symbol=sym, stage=base.stage, depth_pct=base.depth_pct,
             weeks_elapsed=base.weeks_elapsed, pivot=base.pivot,
-            trend_ok=gates.trend_ok, rs_ok=gates.rs_ok, market_ok=gates.market_ok,
+            trend_ok=gates.trend_ok, rs_ok=gates.rs_ok, rs_rank_ok=gates.rs_rank_ok,
+            market_ok=gates.market_ok,
             overheat_ok=q.not_overheated, atr_ok=q.atr_ok,
             contraction_ok=q.contraction_ok, dryup_ok=q.dryup_ok,
             all_pass=gates.passed, n_failed=sum(1 for b in bools if not b),
