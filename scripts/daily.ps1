@@ -13,6 +13,7 @@
 
   Output: out\daily\<date>\buy_candidates.csv , holdings_report.csv
   (Console tables are printed in Korean by the Python screener.)
+  Side effect: appends the session's signals to forward\ (shadow ledger, P8-1).
 #>
 param(
   [string]$EnvFile    = "C:\Users\mh.han\repos\krx\.env",   # KRX credentials (.env)
@@ -60,6 +61,15 @@ if (Test-Path $Holdings) {
 }
 & $py @screenArgs
 if ($LASTEXITCODE -ne 0) { throw "screen_today failed (exit $LASTEXITCODE)" }
+
+# 2b) forward shadow ledger - append-only OOS record (P8-1) --------------------
+#     Seals today's signals before outcomes are known. Commit forward\ to git
+#     to make the record tamper-evident.
+Write-Host "[2b/3] forward shadow ledger -> forward\"
+& $py scripts\forward_ledger.py --candidates "$outDir\buy_candidates.csv" `
+  --kospi data\kospi.csv --kosdaq data\kosdaq.csv `
+  --rules config\rules_v3-3.yaml --costs config\costs.yaml --out forward
+if ($LASTEXITCODE -ne 0) { throw "forward_ledger failed (exit $LASTEXITCODE)" }
 
 # 3) (optional) full-universe backtest - model performance / book flow ---------
 if ($Backtest) {
